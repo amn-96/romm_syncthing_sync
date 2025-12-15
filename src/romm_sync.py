@@ -56,10 +56,30 @@ class RetroGameServer:
     def size_gb(self):
         return round(self.library['fs_size_bytes'].sum() / 1e9, 2)
 
+    def __repr__(self):
+        return (f"RetroGameServer(games={self.count()}, "
+                f"size_gb={self.size_gb()}, "
+                f"platforms={len(self.by_platform)})")
+
+    def summary(self, verbose=True):
+        print(f"Games: {self.count()}, Library Size: {self.size_gb()} GB")
+        print()
+        platforms = list(self.by_platform.items())
+        for idx, (platform, games) in enumerate(platforms):
+            print(f"┌─ {platform}: {len(games)} game(s)")
+            if verbose:
+                for game in games:
+                    print(f"│  - {game}")
+                if idx < len(platforms) - 1:
+                    print("│")
+                    print("├" + "─" * 40)
+                    print("│")
+
 
 if __name__ == "__main__":
     roms = RetroGameServer.initialize_romm_map()
 
-    print(roms.count())
-    print(roms.size_gb())
-
+    logger.info(f"Number of ROM's: {roms.count()}")
+    logger.info(f"Library Size: {roms.size_gb()}")
+    logger.debug(f"{roms.by_id[34]}")
+    logger.debug(f"{roms.by_platform["Game Boy Advance"]}")
