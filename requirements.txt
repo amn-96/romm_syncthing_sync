@@ -1,0 +1,5 @@
+requests
+pytest
+jupyter
+pandas
+nbstripout
