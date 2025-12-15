@@ -47,7 +47,6 @@ class RetroGameServer:
         id_map = dict(zip(library['id'], library['name']))
         platform_map = library.groupby('platform_display_name')['name'].apply(list).to_dict()
         games_list = library['name'].tolist()
-        id_list = library['id'].tolist()
 
         return cls(raw_database=data, library=library, by_id=id_map, by_platform=platform_map, games=games_list)
 
