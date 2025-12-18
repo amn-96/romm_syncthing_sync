@@ -135,6 +135,51 @@ username = os.getenv("ROMM_USERNAME")
 passwd = os.getenv("ROMM_PASSWORD")
 ```
 
-## API Reference
+## API
 
-See `get_romm_list()` for raw API calls. Returns complete ROMM database structure with all ROM metadata.
+### Overview
+
+The `romm_sync` module communicates with ROMM via its REST API to fetch and manage game library data. All API interactions use HTTP Basic Authentication.
+
+### API Endpoints
+
+- **`GET /api/roms/`**: Fetches list of all ROMs with full metadata (pagination required)
+
+### Pagination Quirk
+
+**IMPORTANT**: The ROMM API uses `offset` and `limit` parameters for pagination, **not** `skip` and `limit`. The default limit is **50 records**.
+
+**Quirk**: The `limit` parameter alone without `offset` will always return the first 50 records. Incrementing `skip` does not work—you must use `offset` to retrieve subsequent pages.
+
+**Example**:
+```
+GET /api/roms/?limit=50&offset=0    # Records 1-50
+GET /api/roms/?limit=50&offset=50   # Records 51-100
+GET /api/roms/?limit=50&offset=100  # Records 101-150
+```
+
+The `get_romm_list()` function handles this automatically by making multiple requests with incrementing `offset` values until all records are retrieved.
+
+### initialize_romm_map()
+
+**Function**: `RetroGameServer.initialize_romm_map(romm_url, username, passwd)`
+
+**Purpose**: Factory method that creates a `RetroGameServer` instance by:
+1. Fetching the complete ROM library from ROMM API (with pagination)
+2. Normalizing the JSON response into a pandas DataFrame
+3. Building three index structures for fast lookups:
+   - `by_id`: Map of ROM ID → ROM name
+   - `by_platform`: Map of platform name → list of game names
+   - `games`: Ordered list of all game names
+
+**Returns**: A `RetroGameServer` snapshot containing the complete database state at call time. This is a read-only snapshot—changes to ROMM after initialization won't be reflected.
+
+**Example**:
+```python
+roms = RetroGameServer.initialize_romm_map(
+    romm_url="https://emu.amnserv.xyz",
+    username="akshay",
+    passwd="password"
+)
+print(f"Total games: {roms.count()}")  # Queries the snapshot
+```
