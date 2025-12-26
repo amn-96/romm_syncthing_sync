@@ -135,6 +135,18 @@ username = os.getenv("ROMM_USERNAME")
 passwd = os.getenv("ROMM_PASSWORD")
 ```
 
+## Utilities
+
+### romrar.sh
+
+Mass extraction utility for multi-part RAR archives downloaded via Pyload.
+
+**Usage**: `./src/romrar.sh`
+
+**Behavior**:
+- Recursively finds all `.rar` files in subdirectories and extracts them in place
+- Requires `unrar` utility to be installed
+
 ## API
 
 ### Overview

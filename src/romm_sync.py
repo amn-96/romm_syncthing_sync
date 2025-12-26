@@ -2,12 +2,14 @@
 from pathlib import Path
 import logging
 
+from config import Config
 from library_classes import RetroGameServer
 from sync_operations import SaveBackup
 
+# Configure logging from Config
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, Config.LOG_LEVEL),
+    format=Config.LOG_FORMAT
 )
 logger = logging.getLogger(__name__)
 
@@ -30,24 +32,35 @@ def main():
     3. Matches local games to ROMM entries
     4. Reports matched, unmatched, and sync-ready games
     """
-    # Step 1: Define paths (update these to your actual paths)
-    sync_folder = Path("/path/to/syncthing/saves")
-    cache_file = Path("/path/to/cache/local_games.json")
+    # Step 0: Validate configuration
+    try:
+        Config.validate()
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        return 1
+
+    # Step 1: Use Config for paths
+    sync_folder = Config.SYNC_FOLDER
+    cache_file = Config.CACHE_FILE
 
     # Step 2: Load ROMM library
     logger.info("Initializing ROMM library...")
     try:
-        romm = RetroGameServer.initialize_romm_map()
+        romm = RetroGameServer.initialize_romm_map(
+            romm_url=Config.ROMM_URL,
+            username=Config.ROMM_USERNAME,
+            passwd=Config.ROMM_PASSWORD
+        )
         logger.info(f"Loaded ROMM library: {romm}")
     except Exception as e:
         logger.error(f"Failed to load ROMM library: {e}")
-        return
+        return 1
 
     # Step 3: Scan local sync folder
     logger.info(f"Scanning sync folder: {sync_folder}")
     if not sync_folder.exists():
         logger.error(f"Sync folder does not exist: {sync_folder}")
-        return
+        return 1
 
     catalog = SaveBackup(sync_folder)
     catalog.scan()

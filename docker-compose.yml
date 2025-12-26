@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  romm-sync:
+    build: .
+    container_name: romm-sync
+    restart: unless-stopped
+
+    environment:
+      # ROMM API Configuration
+      - ROMM_URL=https://emu.amnserv.xyz
+      - ROMM_USERNAME=akshay
+      - ROMM_PASSWORD=${ROMM_PASSWORD:-inagalaxyfarfaraway}
+
+      # Paths (internal to container - match volume mounts below)
+      - SYNC_FOLDER=/data/sync
+      - CACHE_FILE=/data/cache/local_games.json
+
+      # Logging Configuration
+      - LOG_LEVEL=INFO
+
+      # Performance Configuration
+      - API_TIMEOUT=30
+      - API_PAGE_SIZE=50
+
+      # Sync Schedule (in seconds)
+      - SYNC_INTERVAL_SECONDS=300
+
+      # Feature Flags
+      - DRY_RUN=false
+      - ENABLE_METRICS=false
+
+    volumes:
+      # Map host Syncthing/saves folder to container
+      # UPDATE THIS PATH to match your actual sync folder location
+      - /path/to/syncthing/saves:/data/sync:ro
+
+      # Cache and backup storage (local to container)
+      - ./cache:/data/cache
+      - ./backup:/data/backup
+
+    networks:
+      - dockernetg9
+
+    # Uncomment to run on schedule (requires additional setup)
+    # profiles:
+    #   - scheduled
+
+networks:
+  dockernetg9:
+    external: true

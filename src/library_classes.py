@@ -9,9 +9,11 @@ from requests.auth import HTTPBasicAuth
 import pandas as pd
 import logging
 
+from config import Config
+
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, Config.LOG_LEVEL),
+    format=Config.LOG_FORMAT
 )
 logger = logging.getLogger(__name__)
 
@@ -152,10 +154,21 @@ class RetroGameServer:
 
     @classmethod
     def initialize_romm_map(cls,
-                            romm_url: str = "https://emu.amnserv.xyz",
-                            username: str = "akshay",
-                            passwd: str = "inagalaxyfarfaraway"):
-        """Use this factory method to initialize the sync with a snapshot of the ROMM database"""
+                            romm_url: str = None,
+                            username: str = None,
+                            passwd: str = None):
+        """Use this factory method to initialize the sync with a snapshot of the ROMM database.
+
+        Args:
+            romm_url: ROMM API base URL. Defaults to Config.ROMM_URL
+            username: ROMM username. Defaults to Config.ROMM_USERNAME
+            passwd: ROMM password. Defaults to Config.ROMM_PASSWORD
+        """
+        # Use provided values or fall back to Config
+        romm_url = romm_url or Config.ROMM_URL
+        username = username or Config.ROMM_USERNAME
+        passwd = passwd or Config.ROMM_PASSWORD
+
         data = get_romm_list(romm_url, username, passwd)
 
         # represent the library as a dataframe for ease of use
