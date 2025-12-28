@@ -124,15 +124,67 @@ saves/
    - Copy to backup location
 4. **Testing**: Validate with your RetroArch setup
 
+## Module Overview
+
+The `romm_sync` codebase follows a 5-layer architecture from low-level API communication to high-level orchestration:
+
+### Layer 1: Raw API Communication
+**`romm_api_func.py` - ROMM API Client**
+
+Encapsulates all HTTP communication with the ROMM REST API. The `RommUser` class handles credentials storage, authentication, and provides generic `get()`, `post()`, and `put()` methods that wrap `requests` library calls with HTTP Basic Auth. The `get_full_library()` method implements pagination logic to fetch the complete ROM database (required because ROMM uses `offset`/`limit` parameters, not `skip`/`limit`).
+
+### Layer 2: Individual Data Organization
+**`library_classes.py` - Data Models**
+
+Defines core data structures for representing games and the ROMM library. The `Game` dataclass unifies local sync folder data (save/state files, modification times) with ROMM library metadata (ROM ID, name, platform). The `RetroGameServer` class is a read-only snapshot of the ROMM database, providing fast lookups by ID, platform, and maintains a flattened pandas DataFrame view for advanced queries. Both classes include serialization methods (`to_dict()`/`from_dict()`, `to_json()`/`from_json()`) for persistence between runs.
+
+### Layer 3: Library-Level Operations
+**`sync_operations.py` - Sync and Discovery Logic**
+
+Orchestrates discovering local saves and syncing them to ROMM. The `SaveBackup` class scans the local sync folder structure, aggregates files by game name, and matches them to ROMM entries using platform + filename matching. Each `Game` instance is responsible for its own sync operations via the `copy_states_to_romm()` method, which determines target directories on the ROMM filesystem and copies state files. Helper functions `stop_romm_container()` and `start_romm_container()` manage Docker lifecycle around sync operations (stopping the container prevents file-lock issues during copying).
+
+### Layer 4: Configuration
+**`config.py` - Environment Configuration**
+
+Loads and validates environment-based configuration from variables like `ROMM_URL`, `ROMM_USERNAME`, `ROMM_BASE_DIR`, `SYNC_FOLDER`, etc. Creates and provides the `RommUser` credentials object to higher layers. Centralizes all configuration logic to avoid hardcoded values scattered throughout the codebase.
+
+### Layer 5: Orchestration
+**`romm_sync.py` - Main Workflow Coordinator**
+
+High-level script that ties all layers together. Workflow: initialize ROMM library snapshot → scan local sync folder → match local games to ROMM entries → sync matched games → report results. This layer is primarily responsible for calling methods on lower layers and managing the overall execution flow.
+
+## API Implementation Notes
+
+### Unused API Functions
+
+The codebase includes several ROMM API methods on the `Game` class that remain **unused due to limitations in the ROMM API itself**:
+
+- **`get_romm_save_states(romm_user)`**: Fetches existing save states for a game from the ROMM API
+- **`post_romm_save_states(romm_user)`**: Uploads a new save state to ROMM via the API
+
+**Why they're unused**:
+
+1. **Documentation Gap**: The ROMM API's state upload endpoint (`POST /api/states`) lacks proper documentation in the OpenAPI spec. The request body schema is not defined, making it unclear how to properly format file uploads. Testing revealed the endpoint expects multipart form-data with a `file` field, but this is not documented.
+
+2. **Known ROMM Issues**: ROMM has documented issues with save state handling, including save state corruption (#2319, #2562 in the ROMM GitHub repository). Users have reported data loss when relying on the API for state uploads.
+
+**Fallback Implementation**: Instead of using the ROMM API for state uploads, `romm_sync` uses direct filesystem copying. It determines the target directory structure (`{romm_base}/assets/users/{user_id}/states/{platform}/{rom_id}/`) by extracting the user ID from the API response (`/api/users/me`) and copies state files directly using `shutil.copy2()`. This approach is more reliable and eliminates the risk of API-related data loss.
+
 ## Configuration
 
-Currently uses hardcoded credentials in `initialize_romm_map()`. Should migrate to environment variables:
+Set environment variables for runtime configuration:
 
-```python
-import os
-romm_url = os.getenv("ROMM_URL", "https://emu.amnserv.xyz")
-username = os.getenv("ROMM_USERNAME")
-passwd = os.getenv("ROMM_PASSWORD")
+```bash
+ROMM_URL=https://emu.amnserv.xyz
+ROMM_USERNAME=your_user
+ROMM_PASSWORD=your_password
+ROMM_API_LIMIT=50
+SYNC_FOLDER=/data/sync
+CACHE_FILE=/data/cache/local_games.json
+LOG_LEVEL=INFO
+SYNC_INTERVAL_SECONDS=300
+DRY_RUN=false
+ENABLE_METRICS=false
 ```
 
 ## Utilities

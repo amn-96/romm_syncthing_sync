@@ -3,8 +3,61 @@ from pathlib import Path
 from datetime import datetime
 from typing import List
 import json
+import re
+import subprocess
+import logging
 
-from library_classes import Game
+from .library_classes import Game, RetroGameServer
+from .romm_api_func import RommUser
+
+logger = logging.getLogger(__name__)
+
+
+# Helper functions for Docker container management
+def stop_romm_container(romm_user: RommUser) -> bool:
+    """Stop the ROMM Docker container.
+
+    Args:
+        romm_user: RommUser object with container name
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        logger.info(f"Stopping ROMM container '{romm_user.romm_container_name}'...")
+        subprocess.run(
+            ["docker", "stop", romm_user.romm_container_name],
+            check=True,
+            capture_output=True
+        )
+        logger.info("ROMM container stopped")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to stop ROMM container: {e}")
+        return False
+
+
+def start_romm_container(romm_user: RommUser) -> bool:
+    """Start the ROMM Docker container.
+
+    Args:
+        romm_user: RommUser object with container name
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        logger.info(f"Starting ROMM container '{romm_user.romm_container_name}'...")
+        subprocess.run(
+            ["docker", "start", romm_user.romm_container_name],
+            check=True,
+            capture_output=True
+        )
+        logger.info("ROMM container started")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to start ROMM container: {e}")
+        return False
 
 
 class SaveBackup:
@@ -14,20 +67,80 @@ class SaveBackup:
         self.sync_folder = sync_folder
         self.games: List[Game] = []
 
-    def scan(self) -> None:
+    @staticmethod
+    def update_games_dict(file_path: Path, platform_name: str, games_dict: dict) -> dict:
+        """Process a file and return updated games_dict with its categorized content.
+
+        Extracts game name and file type from filename, then adds the file to the
+        appropriate category (save, state, or state_screen) in games_dict.
+
+        Args:
+            file_path: Path object for the file to process
+            platform_name: Name of the platform directory
+            games_dict: Dictionary to update with file information
+
+        Returns:
+            Updated games_dict with file categorized and added
+        """
+        filename = file_path.name
+
+        # Extract base game name and file type
+        # Patterns: game.state, game.state0, game.state1, game.state.auto
+        #           game.state.png, game.state0.png, game.state.auto.png
+        game_name = None
+        file_type = None
+
+        # Check for state screenshot (.state.png, .state0.png, .state.auto.png)
+        state_screen_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename)
+        if state_screen_match:
+            game_name = state_screen_match.group(1)
+            file_type = 'state_screen'
+        else:
+            # Check for state file (.state, .state0, .state.auto)
+            state_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?$', filename)
+            if state_match:
+                game_name = state_match.group(1)
+                file_type = 'state'
+            else:
+                # Regular save file (.srm, .sav, etc.)
+                game_name = file_path.stem
+                file_type = 'save'
+
+        # Initialize game entry if not seen before
+        if game_name not in games_dict:
+            games_dict[game_name] = {
+                'platform': platform_name,
+                'saves': [],
+                'states': [],
+                'screens': []
+            }
+
+        # Categorize file
+        if file_type == 'save':
+            games_dict[game_name]['saves'].append(file_path)
+        elif file_type == 'state':
+            games_dict[game_name]['states'].append(file_path)
+        elif file_type == 'state_screen':
+            games_dict[game_name]['screens'].append(file_path)
+
+        return games_dict
+
+    def scan_save_folder(self) -> None:
         """Scan sync folder and build local game catalog.
 
         Expected directory structure:
             sync_folder/
             ├── Game Boy Advance/
             │   ├── Pokemon Fire Red.srm
+            │   ├── Pokemon Fire Red.state
+            │   ├── Pokemon Fire Red.state.png
             │   └── Zelda Minish Cap.srm
             └── NES/
                 ├── Super Mario Bros.sav
                 └── Donkey Kong.sav
 
-        All files in platform directories are treated as save files.
-        Game name is derived from filename (without extension).
+        Aggregates all save files, state files, and state screenshots for each game
+        into a single Game object. Game name is derived from base filename.
         """
         # Iterate through platform directories
         for platform_dir in self.sync_folder.iterdir():
@@ -35,26 +148,36 @@ class SaveBackup:
                 continue
 
             platform_name = platform_dir.name
+            games_dict = {}  # Dictionary to aggregate files by game name
 
             # Discover all files in this platform directory
-            for save_file in platform_dir.iterdir():
-                if not save_file.is_file():
+            for file_path in platform_dir.iterdir():
+                if not file_path.is_file():
                     continue
 
-                # Extract game name from filename (without extension)
-                game_name = save_file.stem
+                games_dict = self.update_games_dict(file_path, platform_name, games_dict)
 
-                # Check if game already exists in catalog
-                existing_game = next((g for g in self.games if g.name == game_name), None)
-                if existing_game:
-                    existing_game.add_local_save(save_file)
-                else:
-                    # Create new game entry
-                    new_game = Game(name=game_name, platform=platform_name)
+            # Create Game objects from aggregated files
+            for game_name, file_info in games_dict.items():
+                new_game = Game(name=game_name, platform=file_info['platform'])
+
+                # Add all save files
+                for save_file in file_info['saves']:
                     new_game.add_local_save(save_file)
-                    self.games.append(new_game)
 
-    def match_to_romm(self, romm_server) -> None:
+                # Add all state files
+                for state_file in file_info['states']:
+                    new_game.add_local_state(state_file)
+
+                # Add all state screenshot files
+                for screen_file in file_info['screens']:
+                    new_game.add_local_state_screen(screen_file)
+                
+                # add to matched games list
+                self.games.append(new_game)
+
+    def match_to_romm(self, 
+                      romm_server: RetroGameServer) -> None:
         """Match local games to RetroGameServer library entries.
 
         Uses platform information to narrow search space for efficiency.
@@ -66,8 +189,13 @@ class SaveBackup:
         for game in self.games:
             # Narrow search to platform if available
             if game.platform:
-                platform_games = romm_server.library[romm_server.library['platform_display_name'] == game.platform]
-                matching_rows = platform_games[platform_games['name'] == game.name]
+                platform_games = romm_server.library[romm_server.library['platform_slug'] == game.platform]
+                # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
+                # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
+                # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
+                # romm_server.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
+                #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
+                matching_rows = platform_games[platform_games['fs_name'].str.contains(game.name, na=False, regex=False)]
             else:
                 # Fallback to searching all games if platform not available
                 matching_rows = romm_server.library[romm_server.library['name'] == game.name]
@@ -120,3 +248,59 @@ class SaveBackup:
             data = json.load(f)
         catalog.games = [Game.from_dict(game_data) for game_data in data]
         return catalog
+
+    def sync_all_states(self, romm_user: RommUser) -> dict:
+        """Sync state files for all matched games to ROMM.
+
+        Handles stopping/starting ROMM container around the sync operation.
+
+        Args:
+            romm_user: RommUser object with credentials and container info
+
+        Returns:
+            Dictionary with sync statistics:
+            {
+                'total_games': int,
+                'games_synced': int,
+                'total_files_copied': int,
+                'errors': List[str]
+            }
+        """
+        stats = {
+            'total_games': 0,
+            'games_synced': 0,
+            'total_files_copied': 0,
+            'errors': []
+        }
+
+        matched_games = self.get_matched_games()
+        if not matched_games:
+            logger.info("No matched games found to sync")
+            return stats
+
+        stats['total_games'] = len(matched_games)
+
+        # Stop ROMM container
+        if not stop_romm_container(romm_user):
+            stats['errors'].append("Failed to stop ROMM container")
+            return stats
+
+        try:
+            # Sync each game
+            for game in matched_games:
+                success, copied = game.copy_states_to_romm(romm_user)
+                if success:
+                    stats['games_synced'] += 1
+                    stats['total_files_copied'] += copied
+
+        finally:
+            # Always restart ROMM container
+            if not start_romm_container(romm_user):
+                stats['errors'].append("Failed to start ROMM container")
+
+        logger.info(f"Sync complete. Synced {stats['games_synced']}/{stats['total_games']} games, "
+                   f"{stats['total_files_copied']} files copied")
+        if stats['errors']:
+            logger.warning(f"Encountered {len(stats['errors'])} errors during sync")
+
+        return stats

@@ -1,41 +1,45 @@
 """Configuration management using environment variables."""
 import os
 from pathlib import Path
+from .romm_api_func import RommUser
 
 
 class Config:
-    """Application configuration from environment variables with sensible defaults."""
+    """Application configuration from environment variables with sensible defaults.
+    Note that __init__ uses default args to get docker environment variables. This is called at function def time, NOT call time
+    so if they change after the function is imported, the change won't be used. Should not be an issue since I'm defining these ONCE at container start."""
 
-    # ROMM API Configuration
-    ROMM_URL = os.getenv("ROMM_URL", "")
-    ROMM_USERNAME = os.getenv("ROMM_USERNAME", "")
-    ROMM_PASSWORD = os.getenv("ROMM_PASSWORD", "")
-    ROMM_UPLOAD_METHOD = os.getenv("ROMM_UPLOAD_METHOD", "API")  # valid options: API, FILE
+    def __init__(self,
+                 romm_credentials: RommUser = RommUser(),  # auto-populated from environment variables
+                 romm_upload_method: str = os.getenv("ROMM_UPLOAD_METHOD", "API"),
+                 sync_folder: str | Path = os.getenv("SYNC_FOLDER", "/data/sync"),
+                 cache_file: str | Path = os.getenv("CACHE_FILE", "/data/cache/local_games.json"),
+                 log_level: str = os.getenv("LOG_LEVEL", "INFO"),
+                 sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "300")),
+                 dry_run: bool = os.getenv("DRY_RUN", "false").lower() == "true",
+                 enable_metrics: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true"):
+        """Initialize config with optional overrides for testing."""
+        
+        # ROMM API Configuration
+        self.ROMM_CREDENTIALS: RommUser = romm_credentials 
+        self.ROMM_UPLOAD_METHOD = romm_upload_method
 
-    # Sync Configuration
-    SYNC_FOLDER = Path(os.getenv("SYNC_FOLDER", "/data/sync"))
-    CACHE_FILE = Path(os.getenv("CACHE_FILE", "/data/cache/local_games.json"))
+        # Sync Configuration
+        self.SYNC_FOLDER = Path(sync_folder)
+        self.CACHE_FILE = Path(cache_file)
 
-    # Logging Configuration
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FORMAT = os.getenv(
-        "LOG_FORMAT",
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+        # Logging Configuration
+        self.LOG_LEVEL = log_level
+        self.LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-    # Performance Configuration
-    API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))
-    API_PAGE_SIZE = int(os.getenv("API_PAGE_SIZE", "50"))
+        # Sync Schedule (in seconds)
+        self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
 
-    # Sync Schedule (in seconds)
-    SYNC_INTERVAL_SECONDS = int(os.getenv("SYNC_INTERVAL_SECONDS", "300"))
+        # Feature Flags
+        self.DRY_RUN = dry_run
+        self.ENABLE_METRICS = enable_metrics
 
-    # Feature Flags
-    DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
-    ENABLE_METRICS = os.getenv("ENABLE_METRICS", "false").lower() == "true"
-
-    @classmethod
-    def validate(cls):
+    def validate(self):
         """Validate required configuration values.
 
         Raises:
@@ -43,12 +47,12 @@ class Config:
         """
         errors = []
 
-        if not cls.ROMM_URL:
+        if not self.ROMM_CREDENTIALS.url:
             errors.append("ROMM Host URL is required!")
-        if not cls.ROMM_PASSWORD:
+        if not self.ROMM_CREDENTIALS.password:
             errors.append("ROMM_PASSWORD is required!")
 
-        if not cls.ROMM_USERNAME:
+        if not self.ROMM_CREDENTIALS.user:
             errors.append("ROMM_USERNAME is required!")
 
         if errors:

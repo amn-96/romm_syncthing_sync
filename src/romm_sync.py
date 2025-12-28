@@ -2,19 +2,20 @@
 from pathlib import Path
 import logging
 
-from config import Config
-from library_classes import RetroGameServer
-from sync_operations import SaveBackup
+from .config import Config
+from .library_classes import RetroGameServer
+from .sync_operations import SaveBackup
 
-# Configure logging from Config
-logging.basicConfig(
-    level=getattr(logging, Config.LOG_LEVEL),
-    format=Config.LOG_FORMAT
-)
+# # Initialize Config instance
+# config = Config()
+
 logger = logging.getLogger(__name__)
+# logger.setLevel(getattr(logging, config.LOG_LEVEL))
+# handler = logging.StreamHandler()
+# handler.setFormatter(logging.Formatter(config.LOG_FORMAT))
+# logger.addHandler(handler)
 
-
-def main():
+def main(config: Config = Config()): 
     """Scan a local Syncthing folder and match games to ROMM library.
 
     Directory structure:
@@ -34,22 +35,22 @@ def main():
     """
     # Step 0: Validate configuration
     try:
-        Config.validate()
+        config.validate()
     except ValueError as e:
         logger.error(f"Configuration error: {e}")
         return 1
 
     # Step 1: Use Config for paths
-    sync_folder = Config.SYNC_FOLDER
-    cache_file = Config.CACHE_FILE
+    sync_folder = config.SYNC_FOLDER
+    cache_file = config.CACHE_FILE
 
     # Step 2: Load ROMM library
     logger.info("Initializing ROMM library...")
     try:
         romm = RetroGameServer.initialize_romm_map(
-            romm_url=Config.ROMM_URL,
-            username=Config.ROMM_USERNAME,
-            passwd=Config.ROMM_PASSWORD
+            romm_url=config.ROMM_URL,
+            username=config.ROMM_USERNAME,
+            passwd=config.ROMM_PASSWORD
         )
         logger.info(f"Loaded ROMM library: {romm}")
     except Exception as e:
