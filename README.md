@@ -23,6 +23,11 @@ Gaming Devices (RetroArch, etc.)
     + Backup Location
 ```
 
+### A note on using the ROMM API to upload saves and states
+I did not find any documentation within the ROMM API that detailed how exactly to send the file with the API. Luckily, I was able to find the skeleton API request thanks to the efforts of the Grout developers. Grout is a ROMM client for NextUI for my TrimUI Brick!
+
+https://github.com/rommapp/grout
+
 ## Usage
 
 ```python

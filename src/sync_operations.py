@@ -2,62 +2,15 @@
 from pathlib import Path
 from datetime import datetime
 from typing import List
+from collections import namedtuple
 import json
 import re
-import subprocess
 import logging
 
 from .library_classes import Game, RetroGameServer
 from .romm_api_func import RommUser
 
 logger = logging.getLogger(__name__)
-
-
-# Helper functions for Docker container management
-def stop_romm_container(romm_user: RommUser) -> bool:
-    """Stop the ROMM Docker container.
-
-    Args:
-        romm_user: RommUser object with container name
-
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        logger.info(f"Stopping ROMM container '{romm_user.romm_container_name}'...")
-        subprocess.run(
-            ["docker", "stop", romm_user.romm_container_name],
-            check=True,
-            capture_output=True
-        )
-        logger.info("ROMM container stopped")
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to stop ROMM container: {e}")
-        return False
-
-
-def start_romm_container(romm_user: RommUser) -> bool:
-    """Start the ROMM Docker container.
-
-    Args:
-        romm_user: RommUser object with container name
-
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        logger.info(f"Starting ROMM container '{romm_user.romm_container_name}'...")
-        subprocess.run(
-            ["docker", "start", romm_user.romm_container_name],
-            check=True,
-            capture_output=True
-        )
-        logger.info("ROMM container started")
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to start ROMM container: {e}")
-        return False
 
 
 class SaveBackup:
@@ -67,8 +20,9 @@ class SaveBackup:
         self.sync_folder = sync_folder
         self.games: List[Game] = []
 
+    #region Scan Functions
     @staticmethod
-    def update_games_dict(file_path: Path, platform_name: str, games_dict: dict) -> dict:
+    def _update_games_dict(file_path: Path, platform_name: str, games_dict: dict) -> dict:
         """Process a file and return updated games_dict with its categorized content.
 
         Extracts game name and file type from filename, then adds the file to the
@@ -124,9 +78,60 @@ class SaveBackup:
             games_dict[game_name]['screens'].append(file_path)
 
         return games_dict
+    
+    def _match_to_romm(self,
+                      game: Game,
+                      romm_server: RetroGameServer) -> None:
+        """Match local games to RetroGameServer library entries.
 
-    def scan_save_folder(self) -> None:
-        """Scan sync folder and build local game catalog.
+        Uses platform information to narrow search space for efficiency.
+        Currently performs exact name matching within platform. Future enhancement: fuzzy matching.
+
+        FUTURE OPTIMIZATION: Implement LocalStateTracker
+        - Track file modification times in cache to detect changes
+        - Only re-scan files that have been modified since last sync
+        - Currently, all files are scanned and matched every time
+        - With caching: 10x faster for unchanged folders
+
+        Args:
+            romm_server: RetroGameServer instance containing library DataFrame
+        """
+        # Narrow search to platform if available
+        if game.platform:
+            platform_games = romm_server.library[romm_server.library['platform_slug'] == game.platform]
+            # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
+            # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
+            # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
+            # romm_server.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
+            #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
+            matching_rows = platform_games[platform_games['fs_name'].str.contains(game.name, na=False, regex=False)]
+        else:
+            # Fallback to searching all games if platform not available
+            matching_rows = romm_server.library[romm_server.library['name'] == game.name]
+
+        if not matching_rows.empty:
+            # Convert DataFrame row to dictionary and populate ROMM data
+            romm_row = matching_rows.iloc[0].to_dict()
+            game.set_romm_data(romm_row)
+        else:
+            # Game not found in ROMM library
+            game.is_matched = False
+
+    def _update_saves_and_states(self, new_game: Game, file_info: dict, romm_user: RommUser):
+        """Creates Game class objects for each save and state file from 'games_dict'"""
+
+        # Local
+        for save_file in file_info['saves']:
+            new_game.add_local_save(save_file)
+
+        for state_file in file_info['states']:
+            new_game.add_local_state(state_file)
+    
+    
+    def scan_and_match(self,
+                       romm_server: RetroGameServer,
+                       romm_user: RommUser) -> dict:
+        """Scan local (syncthing or otherwise) folder and build local game catalog. Public class method.
 
         Expected directory structure:
             sync_folder/
@@ -139,8 +144,8 @@ class SaveBackup:
                 ├── Super Mario Bros.sav
                 └── Donkey Kong.sav
 
-        Aggregates all save files, state files, and state screenshots for each game
-        into a single Game object. Game name is derived from base filename.
+        Aggregates all save files and state files for each game
+        into a single Game object that is then matched to a romm server-side entry. Game name is derived from base filename.
         """
         # Iterate through platform directories
         for platform_dir in self.sync_folder.iterdir():
@@ -148,66 +153,38 @@ class SaveBackup:
                 continue
 
             platform_name = platform_dir.name
-            games_dict = {}  # Dictionary to aggregate files by game name
+            games_dict = {}  # Dictionary to aggregate files by game name (re-created for each platform)
+            found_games = []  # cache games that have been found to avoid duplicates
 
             # Discover all files in this platform directory
             for file_path in platform_dir.iterdir():
                 if not file_path.is_file():
                     continue
+                elif "sync-conflict" in file_path.name:
+                    continue
+                elif ".stignore" in file_path.name or ".stfolder" in file_path.name:  # ignore syncthing metadata
+                    continue
+                elif "._" in file_path.name or ".DS_Store" in file_path.name:  # ignore trash files
+                    continue
 
-                games_dict = self.update_games_dict(file_path, platform_name, games_dict)
-
-            # Create Game objects from aggregated files
+                games_dict = self._update_games_dict(file_path, platform_name, games_dict)
+            
             for game_name, file_info in games_dict.items():
                 new_game = Game(name=game_name, platform=file_info['platform'])
-
-                # Add all save files
-                for save_file in file_info['saves']:
-                    new_game.add_local_save(save_file)
-
-                # Add all state files
-                for state_file in file_info['states']:
-                    new_game.add_local_state(state_file)
-
-                # Add all state screenshot files
-                for screen_file in file_info['screens']:
-                    new_game.add_local_state_screen(screen_file)
                 
+                # update the romm information 
+                self._match_to_romm(game=new_game, romm_server=romm_server)
+                
+                # update the saves and states. Server side info will be populated as well if applicable
+                self._update_saves_and_states(new_game=new_game, file_info=file_info, romm_user=romm_user)
+
                 # add to matched games list
                 self.games.append(new_game)
 
-    def match_to_romm(self, 
-                      romm_server: RetroGameServer) -> None:
-        """Match local games to RetroGameServer library entries.
+        return games_dict
+    #endregion
 
-        Uses platform information to narrow search space for efficiency.
-        Currently performs exact name matching within platform. Future enhancement: fuzzy matching.
-
-        Args:
-            romm_server: RetroGameServer instance containing library DataFrame
-        """
-        for game in self.games:
-            # Narrow search to platform if available
-            if game.platform:
-                platform_games = romm_server.library[romm_server.library['platform_slug'] == game.platform]
-                # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
-                # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
-                # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
-                # romm_server.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
-                #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
-                matching_rows = platform_games[platform_games['fs_name'].str.contains(game.name, na=False, regex=False)]
-            else:
-                # Fallback to searching all games if platform not available
-                matching_rows = romm_server.library[romm_server.library['name'] == game.name]
-
-            if not matching_rows.empty:
-                # Convert DataFrame row to dictionary and populate ROMM data
-                romm_row = matching_rows.iloc[0].to_dict()
-                game.set_romm_data(romm_row)
-            else:
-                # Game not found in ROMM library
-                game.is_matched = False
-
+    #region Utility Functions
     def get_unmatched_games(self) -> List[Game]:
         """Return list of local games that couldn't be matched to ROMM."""
         return [game for game in self.games if not game.is_matched]
@@ -229,7 +206,7 @@ class SaveBackup:
         print(f"Total games in sync folder: {total}")
         print(f"Matched to ROMM: {matched} ({matched/total*100:.1f}% if total > 0 else 0)")
         print(f"With local saves: {with_saves}")
-        print(f"Unmatched: {total - matched}")
+        print(f"Unmatched: {total - matched}.")
 
     def to_dict(self) -> list:
         """Serialize entire catalog to list of dictionaries for caching."""
@@ -241,18 +218,41 @@ class SaveBackup:
             json.dump(self.to_dict(), f, indent=2)
 
     @staticmethod
-    def from_json(filepath: Path, sync_folder: Path) -> 'SaveBackup':
+    def from_json(filepath: Path, sync_folder: Path) -> 'SaveBackup | None':
         """Load catalog from JSON file."""
         catalog = SaveBackup(sync_folder)
-        with open(filepath, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            logger.warning("No existing cache file found. Syncing from scratch.")
+            return None
+        except Exception as e:
+            logger.error(f"{e}")
+            return None
+        
         catalog.games = [Game.from_dict(game_data) for game_data in data]
         return catalog
+    #endregion
+
+    #region Sync Functions (in general, these call the ROMM API)
+    # Mix of static and instance methods
+    def _add_romm_saves_and_states(self, games: List[Game], romm_user: RommUser):
+        # Running this for every file takes a long time because of tons of API requests. 
+        # This function will only be called when necessary (see cache_compare), so it does NOT use self.games
+        for new_game in games:
+            new_game.add_romm_saves( romm_user=romm_user)
+            new_game.add_romm_states(romm_user=romm_user)
 
     def sync_all_states(self, romm_user: RommUser) -> dict:
         """Sync state files for all matched games to ROMM.
 
         Handles stopping/starting ROMM container around the sync operation.
+
+        FUTURE OPTIMIZATION: Implement SyncStrategy pattern
+        - Only sync games with modifications (needs_local_sync check)
+        - Avoid re-uploading unchanged saves
+        - Would reduce bandwidth and ROMM container downtime
 
         Args:
             romm_user: RommUser object with credentials and container info
@@ -280,23 +280,11 @@ class SaveBackup:
 
         stats['total_games'] = len(matched_games)
 
-        # Stop ROMM container
-        if not stop_romm_container(romm_user):
-            stats['errors'].append("Failed to stop ROMM container")
-            return stats
-
-        try:
-            # Sync each game
-            for game in matched_games:
-                success, copied = game.copy_states_to_romm(romm_user)
-                if success:
-                    stats['games_synced'] += 1
-                    stats['total_files_copied'] += copied
-
-        finally:
-            # Always restart ROMM container
-            if not start_romm_container(romm_user):
-                stats['errors'].append("Failed to start ROMM container")
+        # for game in matched_games:
+        #     success, copied = game.copy_states_to_romm(romm_user)
+        #     if success:
+        #         stats['games_synced'] += 1
+        #         stats['total_files_copied'] += copied
 
         logger.info(f"Sync complete. Synced {stats['games_synced']}/{stats['total_games']} games, "
                    f"{stats['total_files_copied']} files copied")
@@ -304,3 +292,4 @@ class SaveBackup:
             logger.warning(f"Encountered {len(stats['errors'])} errors during sync")
 
         return stats
+    #endregion

@@ -1,0 +1,63 @@
+# Example Dockerfile for ROMM Sync
+# This is a template - adjust paths and Python version as needed
+
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies if needed
+# RUN apt-get update && apt-get install -y \
+#     some-system-package \
+#     && rm -rf /var/lib/apt/lists/*
+
+# Copy application code
+COPY src/ /app/src/
+COPY requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create data directories with proper permissions
+RUN mkdir -p /data/sync /data/cache
+
+# Volume mount points
+VOLUME ["/data/sync", "/romm_data", "/data/cache"]
+
+# Environment variables (can be overridden at runtime with docker run -e or --env-file)
+# See .env.example for all available options
+ENV SYNC_MODE=periodic
+ENV SYNC_INTERVAL_SECONDS=300
+ENV LOG_LEVEL=INFO
+
+# Run the main loop
+# Uses the async main function from main_loop.py
+CMD ["python", "-m", "src.main_loop"]
+
+
+# ============================================================================
+# NOTES:
+#
+# 1. Build:
+#    docker build -f Dockerfile.example -t romm-sync:latest .
+#
+# 2. Run:
+#    docker run --env-file .env \
+#      -v /path/to/sync:/data/sync \
+#      -v /path/to/romm_data:/romm_data \
+#      romm-sync:latest
+#
+# 3. Run in background:
+#    docker run -d --name romm-sync \
+#      --env-file .env \
+#      -v /path/to/sync:/data/sync \
+#      -v /path/to/romm_data:/romm_data \
+#      romm-sync:latest
+#
+# 4. View logs:
+#    docker logs -f romm-sync
+#
+# 5. Stop gracefully:
+#    docker stop romm-sync  # Sends SIGTERM, waits for graceful shutdown
+#
+# ============================================================================

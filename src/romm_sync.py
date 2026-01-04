@@ -1,9 +1,10 @@
 """Main orchestration for ROMM game save synchronization."""
+import os
 from pathlib import Path
 import logging
 
 from .config import Config
-from .library_classes import RetroGameServer
+from .library_classes import RetroGameServer, RommUser
 from .sync_operations import SaveBackup
 
 # # Initialize Config instance
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 def main(config: Config = Config()): 
     """Scan a local Syncthing folder and match games to ROMM library.
+    Input classes will auto-populate based on environment variables.
 
     Directory structure:
         sync_folder/
@@ -32,7 +34,7 @@ def main(config: Config = Config()):
     2. Loads the ROMM library
     3. Matches local games to ROMM entries
     4. Reports matched, unmatched, and sync-ready games
-    """
+    """    
     # Step 0: Validate configuration
     try:
         config.validate()
@@ -47,11 +49,7 @@ def main(config: Config = Config()):
     # Step 2: Load ROMM library
     logger.info("Initializing ROMM library...")
     try:
-        romm = RetroGameServer.initialize_romm_map(
-            romm_url=config.ROMM_URL,
-            username=config.ROMM_USERNAME,
-            passwd=config.ROMM_PASSWORD
-        )
+        romm = RetroGameServer.initialize_romm_map(config.ROMM_CREDENTIALS)
         logger.info(f"Loaded ROMM library: {romm}")
     except Exception as e:
         logger.error(f"Failed to load ROMM library: {e}")
@@ -64,12 +62,16 @@ def main(config: Config = Config()):
         return 1
 
     catalog = SaveBackup(sync_folder)
-    catalog.scan()
-    logger.info(f"Found {len(catalog.games)} games in sync folder")
+    catalog.scan_and_match(romm_server=romm, romm_user=config.ROMM_CREDENTIALS)
+    logger.info(f"{catalog.summary()}")
 
-    # Step 4: Match to ROMM
-    logger.info("Matching local games to ROMM library...")
-    catalog.match_to_romm(romm)
+    # Step 4: Get cached library to compare against current local data
+    cached_catalog = SaveBackup.from_json(filepath=cache_file, sync_folder=sync_folder)
+    if cached_catalog is None:  # no existing cache means start a sync from scratch
+        catalog._add_romm_saves_and_states(games=catalog.games, romm_user=config.ROMM_CREDENTIALS)
+    else:
+        pass
+
 
     # Step 5: Report results
     print("\n" + "=" * 80)
@@ -83,7 +85,6 @@ def main(config: Config = Config()):
         for game in sorted(matched, key=lambda g: g.platform or ""):
             print(f"  [{game.platform}] {game.name}")
             print(f"    └─ ROMM ID: {game.romm_id}, Saves: {len(game.local_save_files)}")
-            print(f"    └─ Last modified: {game.local_last_modified}")
 
     # Step 7: Show unmatched games
     unmatched = catalog.get_unmatched_games()
@@ -98,19 +99,14 @@ def main(config: Config = Config()):
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     catalog.to_json(cache_file)
 
-    # Step 9: Show example of retrieving a specific game
-    print("\nEXAMPLE: Accessing game data:")
-    if catalog.games:
-        example_game = catalog.games[0]
-        print(f"  Game: {example_game.name}")
-        print(f"  Platform: {example_game.platform}")
-        print(f"  Matched: {example_game.is_matched}")
-        print(f"  Local saves: {example_game.local_save_files}")
-        if example_game.is_matched:
-            print(f"  ROMM ID: {example_game.romm_id}")
-            print(f"  ROMM size: {example_game.romm_fs_size_bytes} bytes")
-            print(f"  Summary: {example_game.summary()}")
-
 
 if __name__ == "__main__":
-    main()
+    me = RommUser(romm_url = 'https://emu.local.amnserv.xyz',
+                         romm_username="akshay", romm_password="inagalaxyfarfaraway",
+                         romm_base_dir=Path("/mnt/d/serverdat/RetroGameServer"))
+    cfg = Config(romm_credentials=me,
+             sync_folder="/mnt/d/serverdat/EmuSync/SAVES",
+             cache_file=Path.cwd() / "local_games.json",
+             log_level="DEBUG")
+    
+    main(config=cfg)
