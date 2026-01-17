@@ -311,11 +311,13 @@ class LocalLibrary:
             # Create Game objects for all games in this platform
             games = []
             for game_name, file_info in games_dict.items():
+                logger.debug(f"Processing game: {game_name} ({len(file_info['saves'])} saves, {len(file_info['states'])} states)")
                 new_game = Game(name=game_name, platform=file_info['platform'])
                 self._load_local_saves_and_states(new_game=new_game, file_info=file_info)
                 games.append(new_game)
                 # Add to games dict
                 self.games[game_name] = new_game
+                logger.debug(f"  Added {game_name} to library")
 
         return games_dict
     # endregion
@@ -424,7 +426,7 @@ class LocalLibrary:
 
         for event_path in event_paths:
             path_obj = Path(event_path)
-            game_name = path_obj.stem
+            game_name = path_obj.name.split('.')[0]
 
             # Skip if we've already processed this game
             if game_name in affected_games_dict:

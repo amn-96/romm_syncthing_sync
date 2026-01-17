@@ -178,21 +178,22 @@ class Game:
                    romm_items: List[SaveFile] | List[SaveState],
                    api_ops: RommSaves | RommStates):
         """Internal function: syncs from local to romm"""
-        
+
         matched = [LocalRemoteMatch(local=savedata, romm=r, api_ops=api_ops)
                    for r in romm_items if (savedata.path.name == r.path.name)]
         # there should be exactly one match
-        
+
         if len(matched):
             # now check modification time to see if sync is needed
             m = matched[0]
+            logger.debug(f"Syncing...{self.name} - {m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
             if m.local.modified_at > m.romm.modified_at:
                 logger.debug(f"UPDATING SAVE in ROMM: {m.local.path.name}")
                 m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id)
-            
+
             if len(matched) > 0:
                 logger.debug("There are duplicate files on ROMM? This message is experimental.")
-        
+
         else:  # local present but not in romm --> add
             logger.debug(f"ADDING SAVE to ROMM: {savedata.path.name}")
             api_ops.add(local_filepath=savedata.path, rom_id=self.romm_id)
