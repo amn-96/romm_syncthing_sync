@@ -23,6 +23,7 @@ class SaveState:
     path: Path
     platform_id: int
     emulator: str | None
+    id: int
     modified_at: datetime
     slot: int
     in_sync: bool = False  # initialize with False so it has to be checked
@@ -39,6 +40,7 @@ class SaveFile:
     path: Path
     platform_id: int
     modified_at: datetime
+    id: int | None = None
     in_sync: bool = False  # initialize with False so it has to be checked
     romm_api: RommSaves = field(default=None)
 
@@ -132,8 +134,12 @@ class Game:
         for s in response:
             # modification time -- convert to UTC for consistency (ROMM API returns in UTC)
             save_mtime = datetime.fromisoformat(s['updated_at'])
-            self.romm_save_files.append(SaveFile(path=Path(s['file_path']) / s['file_name'], platform_id=self.romm_platform_id, modified_at=save_mtime))
-        
+            self.romm_save_files.append(
+                SaveFile(path=Path(s['file_path']) / s['file_name'],
+                         platform_id=self.romm_platform_id,
+                         modified_at=save_mtime,
+                         id=s['id']))
+
         return response
 
     def fetch_romm_states(self):
@@ -143,18 +149,18 @@ class Game:
         api_ops = get_config().ROMM_CREDENTIALS.states
 
         response: list[dict] = api_ops.get(self.romm_id, self.romm_platform_id)
-        
+
         # organize API response into namedtuples
-        for s in response: 
+        for s in response:
             # modification time -- convert to UTC for consistency (ROMM API returns in UTC)
             state_mtime = datetime.fromisoformat(s['updated_at'])
-            
+
             # Deprecated because unneccessary
             # if romm_user.romm_base_dir is not None:
             #     state_path = romm_user.romm_base_dir / "assets" / Path(s["file_path"])  # link it to the user's base dir. just in case....
             # else:
             #     state_path = Path(s["file_path"])
-            
+
             # save slot
             state_ext = s["file_extension"].split("state")
             if state_ext[1]:
@@ -168,6 +174,7 @@ class Game:
             self.romm_state_files.append(SaveState(path=Path(s['file_path']) / s['file_name'],
                                                    platform_id=self.romm_platform_id,
                                                    modified_at=state_mtime,
+                                                   id=s['id'],
                                                    slot=save_slot,
                                                    emulator=None))
         return response
@@ -188,10 +195,10 @@ class Game:
             m = matched[0]
             logger.debug(f"Syncing...{self.name} - {m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
             if m.local.modified_at > m.romm.modified_at:
-                logger.debug(f"UPDATING SAVE in ROMM: {m.local.path.name}")
-                m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id)
+                logger.debug(f"Updating save data in ROMM: {m.local.path.name}")
+                m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, save_id=m.romm.id)
 
-            if len(matched) > 0:
+            if len(matched) > 1:
                 logger.debug("There are duplicate files on ROMM? This message is experimental.")
 
         else:  # local present but not in romm --> add
@@ -228,109 +235,6 @@ class Game:
             status.append("ROMM: unmatched")
 
         return " | ".join(status)
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization (handles Path and datetime objects)."""
-        data = asdict(self)
-
-        # Serialize SaveFile namedtuples (path, platform_id, modified_at)
-        data["local_save_files"] = [
-            {
-                "path": str(sf.path),
-                "platform_id": sf.platform_id,
-                "modified_at": sf.modified_at.isoformat() if sf.modified_at else None
-            }
-            for sf in self.local_save_files
-        ]
-
-        # Serialize SaveState namedtuples (path, platform_id, emulator, modified_at, slot)
-        data["local_state_files"] = [
-            {
-                "path": str(ss.path),
-                "platform_id": ss.platform_id,
-                "emulator": ss.emulator,
-                "modified_at": ss.modified_at.isoformat() if ss.modified_at else None,
-                "slot": ss.slot
-            }
-            for ss in self.local_state_files
-        ]
-
-        # Serialize ROMM SaveFile namedtuples
-        data["romm_save_files"] = [
-            {
-                "path": str(sf.path),
-                "platform_id": sf.platform_id,
-                "modified_at": sf.modified_at.isoformat() if sf.modified_at else None
-            }
-            for sf in self.romm_save_files
-        ]
-
-        # Serialize ROMM SaveState namedtuples
-        data["romm_state_files"] = [
-            {
-                "path": str(ss.path),
-                "platform_id": ss.platform_id,
-                "emulator": ss.emulator,
-                "modified_at": ss.modified_at.isoformat() if ss.modified_at else None,
-                "slot": ss.slot
-            }
-            for ss in self.romm_state_files
-        ]
-
-        data.pop("romm_data", None)  # Exclude romm_data to avoid over-serialization
-        return data
-
-    @staticmethod
-    def from_dict(data: dict) -> 'Game':
-        """Reconstruct a Game from a serialized dictionary."""
-        data = data.copy()
-
-        # Deserialize local SaveFile namedtuples
-        data["local_save_files"] = [
-            SaveFile(
-                path=Path(sf["path"]),
-                platform_id=sf["platform_id"],
-                modified_at=datetime.fromisoformat(sf["modified_at"]) if sf["modified_at"] else None
-            )
-            for sf in data.get("local_save_files", [])
-        ]
-
-        # Deserialize local SaveState namedtuples
-        data["local_state_files"] = [
-            SaveState(
-                path=Path(ss["path"]),
-                platform_id=ss["platform_id"],
-                emulator=ss["emulator"],
-                modified_at=datetime.fromisoformat(ss["modified_at"]) if ss["modified_at"] else None,
-                slot=ss["slot"]
-            )
-            for ss in data.get("local_state_files", [])
-        ]
-
-        # Deserialize ROMM SaveFile namedtuples
-        data["romm_save_files"] = [
-            SaveFile(
-                path=Path(sf["path"]),
-                platform_id=sf["platform_id"],
-                modified_at=datetime.fromisoformat(sf["modified_at"]) if sf["modified_at"] else None
-            )
-            for sf in data.get("romm_save_files", [])
-        ]
-
-        # Deserialize ROMM SaveState namedtuples
-        data["romm_state_files"] = [
-            SaveState(
-                path=Path(ss["path"]),
-                platform_id=ss["platform_id"],
-                emulator=ss["emulator"],
-                modified_at=datetime.fromisoformat(ss["modified_at"]) if ss["modified_at"] else None,
-                slot=ss["slot"]
-            )
-            for ss in data.get("romm_state_files", [])
-        ]
-
-        data.pop("romm_data", None)  # Exclude romm_data to avoid reconstruction issues
-        return Game(**data)
 
     def __repr__(self):
         return (f"Game(name={self.name}, "

@@ -66,12 +66,14 @@ class RommSaves:
 
     def update(self,
                  local_filepath: str | Path,
-                 rom_id: int) -> Dict:
+                 rom_id: int,
+                 save_id: int) -> Dict:
         """Update an existing save file in ROMM.
 
         Args:
             local_filepath: LOCAL LIBRARY PATH to the save file
             rom_id: ROMM ROM ID
+            save_id: ROMM Save ID (obtained from get() method)
 
         Returns:
             Parsed JSON response from ROMM API
@@ -84,16 +86,14 @@ class RommSaves:
 
         with open(local_filepath, 'rb') as f:
             files = {'saveFile': (local_filepath.name, f)}
-            params = {'rom_id': rom_id}
 
-            url = f"{self.romm_user.url}/api/saves/"
+            url = f"{self.romm_user.url}/api/saves/{save_id}"
             response = requests.put(
                 url,
                 auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                params=params,
                 files=files
             )
-            logger.debug(f"PUT /api/saves/ - Status Code: {response.status_code}")
+            logger.debug(f"PUT /api/saves/{save_id} - Status Code: {response.status_code}")
             return response.json()
 
 
@@ -161,12 +161,15 @@ class RommStates:
     def update(self,
                local_filepath: str | Path,
                rom_id: int,
+               state_id: int,
                emulator: str | None = None) -> Dict:
         """Update an existing state file in ROMM.
 
         Args:
             local_filepath: Path to the state file to upload
             rom_id: ROMM ROM ID
+            state_id: ROMM State ID (obtained from get() method)
+            emulator: Optional emulator name
 
         Returns:
             Parsed JSON response from ROMM API
@@ -179,16 +182,14 @@ class RommStates:
 
         with open(local_filepath, 'rb') as f:
             files = {'stateFile': (local_filepath.name, f)}
-            params = {'rom_id': rom_id, 'emulator': emulator}
 
-            url = f"{self.romm_user.url}/api/states/"
+            url = f"{self.romm_user.url}/api/states/{state_id}"
             response = requests.put(
                 url,
                 auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                params=params,
                 files=files
             )
-            logger.debug(f"PUT /api/states/ - Status Code: {response.status_code}")
+            logger.debug(f"PUT /api/states/{state_id} - Status Code: {response.status_code}")
             return response.json()
 
 
