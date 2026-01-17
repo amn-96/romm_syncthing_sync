@@ -73,7 +73,7 @@ class RommSaves:
         Args:
             local_filepath: LOCAL LIBRARY PATH to the save file
             rom_id: ROMM ROM ID
-            save_id: ROMM Save ID (obtained from get() method)
+            id: ROMM Save ID (obtained from get() method)
 
         Returns:
             Parsed JSON response from ROMM API
@@ -87,13 +87,13 @@ class RommSaves:
         with open(local_filepath, 'rb') as f:
             files = {'saveFile': (local_filepath.name, f)}
 
-            url = f"{self.romm_user.url}/api/saves/{save_id}"
+            url = f"{self.romm_user.url}/api/saves/{id}"
             response = requests.put(
                 url,
                 auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
                 files=files
             )
-            logger.debug(f"PUT /api/saves/{save_id} - Status Code: {response.status_code}")
+            logger.debug(f"PUT /api/saves/{id} - Status Code: {response.status_code}")
             return response.json()
 
 
@@ -168,7 +168,7 @@ class RommStates:
         Args:
             local_filepath: Path to the state file to upload
             rom_id: ROMM ROM ID
-            state_id: ROMM State ID (obtained from get() method)
+            id: ROMM State ID (obtained from get() method)
             emulator: Optional emulator name
 
         Returns:
@@ -183,13 +183,13 @@ class RommStates:
         with open(local_filepath, 'rb') as f:
             files = {'stateFile': (local_filepath.name, f)}
 
-            url = f"{self.romm_user.url}/api/states/{state_id}"
+            url = f"{self.romm_user.url}/api/states/{id}"
             response = requests.put(
                 url,
                 auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
                 files=files
             )
-            logger.debug(f"PUT /api/states/{state_id} - Status Code: {response.status_code}")
+            logger.debug(f"PUT /api/states/{id} - Status Code: {response.status_code}")
             return response.json()
 
 

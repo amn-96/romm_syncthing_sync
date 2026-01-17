@@ -199,7 +199,7 @@ class Game:
                 m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, id=m.romm.id)
 
             if len(matched) > 1:
-                logger.debug("There are duplicate files on ROMM? This message is experimental.")
+                logger.debug("There are duplicate files on ROMM (?). Check your ROMM instance.")
 
         else:  # local present but not in romm --> add
             logger.debug(f"ADDING SAVE to ROMM: {savedata.path.name}")
