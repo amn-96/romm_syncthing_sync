@@ -55,6 +55,7 @@ def full_sync(app_cfg: Config) -> tuple[RetroGameServer, LocalLibrary]:
         logger.warning(f"{len(result.games_failed)} games failed to sync")
     if result.unmatched_games:
         logger.info(f"{len(result.unmatched_games)} games could not be matched to ROMM")
+        logger.info(f"Unmatched games: {', '.join([ug.name for ug in result.unmatched_games])}")
 
     return romm_library, lcl
 
