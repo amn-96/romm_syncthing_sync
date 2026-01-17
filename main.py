@@ -15,7 +15,16 @@ load_dotenv()
 from src.romm_sync import initialize_romm_sync, full_sync, cleanup
 from src.sync_orchestrator import SyncManager, FileChangeHandler
 
-# Configure logging
+# Configure logging with custom TRACE level
+TRACE_LEVEL = 5
+logging.addLevelName(TRACE_LEVEL, "TRACE")
+
+def trace(self, message, *args, **kwargs):
+    if self.isEnabledFor(TRACE_LEVEL):
+        self._log(TRACE_LEVEL, message, args, **kwargs)
+
+logging.Logger.trace = trace
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,

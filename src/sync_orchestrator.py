@@ -317,7 +317,7 @@ class FileChangeHandler(FileSystemEventHandler):
     def _handle_event(self, event):
         """Common handler for all filesystem events."""
         if not event.is_directory:
-            logger.info(f"Filesystem Event: {event.event_type} - {event.src_path}")
+            logger.trace(f"Filesystem Event: {event.event_type} - {event.src_path}")
             self.sync_manager.add_event(event.src_path)
             self.sync_manager.schedule_sync()
 
