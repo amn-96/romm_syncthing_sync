@@ -32,6 +32,10 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
+# Suppress verbose watchdog logging by default
+logging.getLogger("watchdog.observers.inotify_c").setLevel(TRACE_LEVEL)
+logging.getLogger("watchdog").setLevel(logging.INFO)
+
 
 def run_periodic_sync(app_cfg):
     """Run ROMM sync in periodic mode, performing full syncs at regular intervals."""

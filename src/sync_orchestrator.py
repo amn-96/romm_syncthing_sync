@@ -153,6 +153,8 @@ class SyncOrchestrator:
                 self.local_library.to_json(cache_filepath)
 
             result.success = len(failed) == 0
+            if len(successful) == 0 and len(failed) == 0:
+                logger.debug("No changes detected - libraries already in sync")
             logger.info("---------- Full sync completed ----------")
 
             return result
