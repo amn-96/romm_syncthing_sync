@@ -6,6 +6,10 @@ import signal
 import sys
 from time import perf_counter as tpc
 import threading
+from dotenv import load_dotenv
+
+# Load environment variables early
+load_dotenv()
 
 # internal imports
 from src.romm_sync import initialize_romm_sync, full_sync, cleanup
@@ -93,9 +97,17 @@ def run_watch_sync(srv, lcl, app_cfg):
 
 def main():
     """Main orchestration function."""
-    logger.info("Romm_sync starting...")
-
     app_cfg, srv, lcl = initialize_romm_sync()
+
+    # Reconfigure logging with the log level from config
+    logging.basicConfig(
+        level=getattr(logging, app_cfg.LOG_LEVEL.upper(), logging.INFO),
+        format="%(asctime)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True
+    )
+
+    logger.info("Romm_sync starting...")
 
     if app_cfg.SYNC_MODE == "periodic":
         run_periodic_sync(app_cfg)
