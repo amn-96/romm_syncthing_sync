@@ -118,16 +118,58 @@ saves/
 2. Check the ROMM API to see if that ROM uses a backend folder
 3. Place the save file in the correct nested location
 
+## Completed Features
+
+- Save file structure: Organizes saves in `{sync_folder}/{platform}/{game_name}.{save_extension}`
+- Game discovery and matching: Scans local folder and matches to ROMM using platform + filename matching
+- Filesystem monitoring: Watchdog-based real-time detection of file changes with debouncing
+- Bulk operations abstraction: Game operations invoked via library-level functions
+- Library serialization: Cache local library state to JSON for faster startup
+
+## Main Execution Flow
+
+The current `main()` function in `main_simple.py` follows this sequence:
+
+```
+1. INITIALIZATION
+   ├─ Load config from environment (ROMM credentials, sync folder path)
+   ├─ Create RetroGameServer snapshot (connects to ROMM API, fetches library)
+   ├─ Create LocalLibrary by scanning sync folder
+   │  ├─ Discovers all saves/states grouped by game
+   │  ├─ Matches each game to ROMM via platform + filename
+   │  └─ Populates local file lists in Game objects
+   └─ Log summary of detected library
+
+2. CONTINUOUS MONITORING
+   ├─ Set up graceful shutdown handlers (SIGTERM, SIGINT)
+   ├─ Create filesystem event handler (FileChangeHandler)
+   ├─ Start watchdog Observer to recursively watch sync folder
+   ├─ On file event (create/modify/delete/move):
+   │  ├─ Log the event
+   │  ├─ Cancel any pending sync timer
+   │  └─ Schedule new sync operation with debounce delay
+   └─ Keep observer running until shutdown
+
+3. SYNC OPERATION (triggered by file change)
+   ├─ (Placeholder) match_romm_saves_and_states() on changed games
+   ├─ (Placeholder) sync_saves_and_states_to_romm() on changed games
+   └─ Report sync statistics
+```
+
 ## Next Steps
 
-1. **Define save file structure**: Determine how synced saves are organized in the central folder (e.g., by platform, by device)
-2. **Map RetroArch saves**: Document standard RetroArch save locations for each emulator core
-3. **Implement sync logic**:
-   - Watch central folder for changes
-   - Query ROMM API for correct destination paths
-   - Handle save file uploads via ROMM API
-   - Copy to backup location
-4. **Testing**: Validate with your RetroArch setup
+1. **Implement save file sync**: Complete the `sync_to_romm()` function to:
+   - Query which games had changes (from watchdog events)
+   - Fetch ROMM metadata for those games (`match_romm_saves_and_states()`)
+   - Upload changes to ROMM (`sync_saves_and_states_to_romm()`)
+   - Report sync statistics
+2. **Optimize API calls**: Implement change tracking via modification times to avoid unnecessary ROMM API calls for unchanged files
+3. **Handle edge cases**:
+   - Deal with filename collisions across platforms
+   - Support fuzzy matching for renamed games
+   - Handle save file conflicts gracefully
+4. **Add monitoring**: Implement logging, metrics, and alerting for sync operations
+5. **Testing**: Validate with your RetroArch setup across multiple platforms
 
 ## Module Overview
 
@@ -139,14 +181,35 @@ The `romm_sync` codebase follows a 5-layer architecture from low-level API commu
 Encapsulates all HTTP communication with the ROMM REST API. The `RommUser` class handles credentials storage, authentication, and provides generic `get()`, `post()`, and `put()` methods that wrap `requests` library calls with HTTP Basic Auth. The `get_full_library()` method implements pagination logic to fetch the complete ROM database (required because ROMM uses `offset`/`limit` parameters, not `skip`/`limit`).
 
 ### Layer 2: Individual Data Organization
-**`library_classes.py` - Data Models**
+**`games_class.py` - Game Data Model**
 
-Defines core data structures for representing games and the ROMM library. The `Game` dataclass unifies local sync folder data (save/state files, modification times) with ROMM library metadata (ROM ID, name, platform). The `RetroGameServer` class is a read-only snapshot of the ROMM database, providing fast lookups by ID, platform, and maintains a flattened pandas DataFrame view for advanced queries. Both classes include serialization methods (`to_dict()`/`from_dict()`, `to_json()`/`from_json()`) for persistence between runs.
+Defines the `Game` dataclass that unifies local sync folder data (save/state file paths, modification times) with ROMM library metadata (ROM ID, name, platform, filesystem info). Each `Game` instance is responsible for its own operations:
+- `add_local_save()` / `add_local_state()` - Register local files
+- `add_romm_saves()` / `add_romm_states()` - Fetch remote metadata from ROMM API
+- `sync_local_saves_to_remote()` / `sync_local_states_to_remote()` - Upload changes to ROMM
 
 ### Layer 3: Library-Level Operations
-**`sync_operations.py` - Sync and Discovery Logic**
+**`library_classes.py` - Library Aggregation & Bulk Game Operations**
 
-Orchestrates discovering local saves and syncing them to ROMM. The `SaveBackup` class scans the local sync folder structure, aggregates files by game name, and matches them to ROMM entries using platform + filename matching. Each `Game` instance is responsible for its own sync operations via the `copy_states_to_romm()` method, which determines target directories on the ROMM filesystem and copies state files. Helper functions `stop_romm_container()` and `start_romm_container()` manage Docker lifecycle around sync operations (stopping the container prevents file-lock issues during copying).
+Defines two core classes and two bulk operation functions:
+
+**`RetroGameServer`**: Read-only snapshot of the ROMM database created via `initialize_romm_map()`. Provides fast lookups:
+- `by_id`: Map of ROM ID → ROM name
+- `by_platform`: Map of platform slug → list of game names
+- `library`: Pandas DataFrame with flattened metadata for advanced queries
+- Methods: `count()`, `size_gb()`
+
+**`LocalLibrary`**: Catalog of games discovered in the local sync folder. Scans directory structure, aggregates saves/states by game name, and matches each to ROMM entries. Provides:
+- `build_from_scratch()` - Scan folder, match to ROMM, populate local file lists
+- `get_matched_games()` / `get_unmatched_games()` - Filter games
+- `sync_all_states()` - Orchestrate syncing for all matched games
+- Serialization: `to_json()` / `from_json()`
+
+**Bulk Operation Functions**: These functions operate on lists of `Game` objects and are the key abstraction pattern:
+- `match_romm_saves_and_states(games: List[Game])` - For each game, call `add_romm_saves()` and `add_romm_states()` (expensive, many API calls)
+- `sync_saves_and_states_to_romm(games: List[Game])` - For each game, call `sync_local_saves_to_remote()` and `sync_local_states_to_remote()` (uploads changes)
+
+This pattern allows operations to be applied selectively (e.g., only to changed files detected by watchdog) rather than all games every time.
 
 ### Layer 4: Configuration
 **`config.py` - Environment Configuration**
@@ -154,9 +217,24 @@ Orchestrates discovering local saves and syncing them to ROMM. The `SaveBackup` 
 Loads and validates environment-based configuration from variables like `ROMM_URL`, `ROMM_USERNAME`, `ROMM_BASE_DIR`, `SYNC_FOLDER`, etc. Creates and provides the `RommUser` credentials object to higher layers. Centralizes all configuration logic to avoid hardcoded values scattered throughout the codebase.
 
 ### Layer 5: Orchestration
-**`romm_sync.py` - Main Workflow Coordinator**
+**`main_simple.py` - Main Workflow Coordinator**
 
-High-level script that ties all layers together. Workflow: initialize ROMM library snapshot → scan local sync folder → match local games to ROMM entries → sync matched games → report results. This layer is primarily responsible for calling methods on lower layers and managing the overall execution flow.
+High-level orchestrator that ties all layers together using a watchdog pattern:
+
+**Initialization Phase**:
+1. Load app config from environment variables
+2. Create `RetroGameServer` snapshot of ROMM database via `initialize_romm_map()`
+3. Build `LocalLibrary` by scanning sync folder and matching each game to ROMM
+4. Log summary of detected library
+
+**Continuous Monitoring Phase**:
+1. Create a filesystem event handler (`FileChangeHandler`) using Python's `watchdog` library
+2. Recursively watch the sync directory for file modifications, creations, deletions, and moves
+3. On file change, schedule a delayed sync operation (debounce with configurable delay to avoid rapid repeated syncs)
+4. Sync function fetches ROMM metadata for changed games and uploads saves/states
+5. Continue monitoring indefinitely until graceful shutdown via SIGTERM/SIGINT
+
+This approach avoids constant polling and API calls, instead reacting only to actual file changes in the sync folder.
 
 ## API Implementation Notes
 

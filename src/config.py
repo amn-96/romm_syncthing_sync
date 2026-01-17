@@ -1,45 +1,46 @@
 """Configuration management using environment variables."""
 import os
 from pathlib import Path
+from typing import Optional
 from .romm_api_func import RommUser
 
 
 class Config:
     """Application configuration from environment variables with sensible defaults.
-    Note that __init__ uses default args to get docker environment variables. This is called at function def time, NOT call time
-    so if they change after the function is imported, the change won't be used. Should not be an issue since I'm defining these ONCE at container start.
 
-    Used by main_loop.py for continuous synchronization mode.
-    See .env.example for all available configuration options and descriptions.
+    All values are read from environment variables at container startup.
+    Bind mount paths are hardcoded since they're defined in docker-compose.
     """
 
     def __init__(self,
-                 romm_credentials: RommUser = RommUser(),  # auto-populated from environment variables
-                 romm_upload_method: str = os.getenv("ROMM_UPLOAD_METHOD", "API"),
-                 sync_folder: str | Path = os.getenv("SYNC_FOLDER", "/data/sync"),
-                 cache_file: str | Path = os.getenv("CACHE_FILE", "/data/cache/sync_cache.json"),
+                 romm_credentials: RommUser = RommUser(),
+                 sync_dir: str | Path = "/syncdata",  # docker bind mount
+                 data_dir: str | Path = "/appdata",   # docker bind mount
+                 watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
+                 sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
+                 sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
                  log_level: str = os.getenv("LOG_LEVEL", "INFO"),
-                 sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "300")),
                  dry_run: bool = os.getenv("DRY_RUN", "false").lower() == "true",
                  enable_metrics: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true"):
-        """Initialize config with optional overrides for testing."""
-        
+        """Initialize config from environment variables."""
+
         # ROMM API Configuration
-        self.ROMM_CREDENTIALS: RommUser = romm_credentials 
-        self.ROMM_UPLOAD_METHOD = romm_upload_method
+        self.ROMM_CREDENTIALS: RommUser = romm_credentials
 
         # Sync Configuration
-        self.SYNC_FOLDER = Path(sync_folder)
-        # include the configured romm_user to identify the cache file
-        cache_name = f"{Path(cache_file).stem}_{self.ROMM_CREDENTIALS.user}.json" 
-        self.CACHE_FILE = Path(cache_file).parent / cache_name
+        self.SYNC_DIR = Path(sync_dir)
+        self.SYNC_MODE = sync_mode
+        self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
+        self.WATCHDOG_DELAY_SECONDS = watchdog_delay_seconds
+
+        # Data/Cache Configuration
+        self.DATA_DIR = Path(data_dir)
+        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.CACHE_FILEPATH = self.DATA_DIR / f"LibraryCache_{self.ROMM_CREDENTIALS.user}.json"
 
         # Logging Configuration
         self.LOG_LEVEL = log_level
         self.LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-        # Sync Schedule (in seconds)
-        self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
 
         # Feature Flags
         self.DRY_RUN = dry_run
@@ -57,11 +58,29 @@ class Config:
             errors.append("ROMM Host URL is required!")
         if not self.ROMM_CREDENTIALS.password:
             errors.append("ROMM_PASSWORD is required!")
-
         if not self.ROMM_CREDENTIALS.user:
             errors.append("ROMM_USERNAME is required!")
+        if not self.SYNC_DIR or not self.SYNC_DIR.exists():
+            errors.append("SYNC_DIR does not exist or is not configured!")
 
         if errors:
             raise ValueError(f"Configuration errors: {', '.join(errors)}")
 
         return True
+
+
+# Global config singleton
+_config: Optional[Config] = None
+
+
+def get_config() -> Config:
+    """Get the global Config instance.
+
+    Auto-initializes from environment variables on first call if not already set.
+    This allows internal functions to get the config without needing to pass it around.
+    """
+    global _config
+    if _config is None:
+        _config = Config()
+        _config.validate()
+    return _config
