@@ -5,7 +5,6 @@ from typing import List, Dict, Optional
 import pandas as pd
 import logging
 import re
-import json
 
 # program imports
 from .games_class import Game
@@ -102,7 +101,7 @@ class LocalLibrary:
         self.sync_folder = sync_folder
         self.games: Dict[str, Game] = {}
 
-    # # Initialize from a previously-built JSON file to save time.   
+    # # Initialize from a previously-built JSON file to save time.
     # @classmethod
     # def from_json(cls, filepath: Path, sync_folder: Path) -> 'LocalLibrary':
     #     """Load catalog from JSON file."""
@@ -116,10 +115,10 @@ class LocalLibrary:
     #     except Exception as e:
     #         logger.error(f"{e}")
     #         raise (e)
-        
+
     #     local_library.games = {game_data['name']: Game.from_dict(game_data) for game_data in data}
     #     return local_library
-    
+
     # region Scan Functions
     @staticmethod
     def _collect_games(platform_dir: Path) -> List[Path]:
@@ -143,7 +142,7 @@ class LocalLibrary:
             files.append(file_path)
 
         return files
-        
+
     @staticmethod
     def _add_game_dict_entry(file_path: Path, platform_name: str, games_dict: dict) -> dict:
         """Process a file and return updated games_dict with its categorized content.
@@ -221,8 +220,8 @@ class LocalLibrary:
         return games_dict
 
     def match_to_romm(self,
-                       games: List[Game],
-                       romm_library: RetroGameServer) -> None:
+                      games: List[Game],
+                      romm_library: RetroGameServer) -> None:
         """Match local games to RetroGameServer library entries.
 
         Uses platform information to narrow search space for efficiency.

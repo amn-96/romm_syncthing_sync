@@ -14,7 +14,7 @@ class RommSaves:
     def __init__(self, romm_user: 'RommUser'):
         """Initialize with a RommUser instance for API access."""
         self.romm_user = romm_user
-    
+
     def get(self,
             rom_id: int,
             platform_id: int) -> List[Dict]:
@@ -65,9 +65,9 @@ class RommSaves:
             # return response.json()
 
     def update(self,
-                 local_filepath: str | Path,
-                 rom_id: int,
-                 id: int) -> Dict:
+               local_filepath: str | Path,
+               rom_id: int,
+               id: int) -> Dict:
         """Update an existing save file in ROMM.
 
         Args:
@@ -103,7 +103,7 @@ class RommStates:
     def __init__(self, romm_user: 'RommUser'):
         """Initialize with a RommUser instance for API access."""
         self.romm_user = romm_user
-    
+
     def get(self,
             rom_id: int,
             platform_id: int) -> List[Dict]:
@@ -221,7 +221,7 @@ class RommUser:
         if self._saves is None:
             self._saves = RommSaves(self)
         return self._saves
-    
+
     @property
     def states(self) -> RommStates:
         """Lazy-loaded RommSaves instance for handling save file operations."""
@@ -267,7 +267,7 @@ class RommUser:
                                  headers=headers)
         logger.debug(f"Status Code: {response.status_code}")
         return response.json()
-    
+
     def _put(self,
              endpoint: str,
              params: Optional[Dict] = None) -> Dict:
@@ -283,7 +283,7 @@ class RommUser:
         response = requests.put(url, auth=HTTPBasicAuth(self.user, self.password), params=params)
         logger.debug(f"Status Code: {response.status_code}")
         return response.json()
-    
+
     def get_full_library(self) -> dict:
         """Gets the full list of ROM's in the ROMM.app database, with arg support for pagination.
 

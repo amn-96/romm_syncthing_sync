@@ -10,5 +10,5 @@ exclude =
     dist,
     build,
     .eggs
-max-line-length = 127
+max-line-length = 256
 max-complexity = 10

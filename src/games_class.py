@@ -1,6 +1,6 @@
 """Class that contains a single game's local and remote (romm) information."""
 # Imports - builtins
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
@@ -8,7 +8,7 @@ import logging
 from collections import namedtuple
 
 # Imports - app
-from .romm_api_func import RommUser, RommSaves, RommStates
+from .romm_api_func import RommSaves, RommStates
 from .config import get_config
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class Game:
     romm_platform: Optional[str] = None  # Platform from ROMM (may differ if matched) -- informational
     romm_platform_id: Optional[str] = None  # Platform ID (int) from ROMM -- used for api lookups.
     romm_fs_size: Optional[float] = None  # File size in MB from ROMM
-    romm_data: Optional[Dict] = None  # Full raw data from ROMM API for reference 
+    romm_data: Optional[Dict] = None  # Full raw data from ROMM API for reference
 
     # Match quality indicators
     is_matched: bool = False  # Whether this game was successfully matched to ROMM
@@ -155,12 +155,6 @@ class Game:
             # modification time -- convert to UTC for consistency (ROMM API returns in UTC)
             state_mtime = datetime.fromisoformat(s['updated_at'])
 
-            # Deprecated because unneccessary
-            # if romm_user.romm_base_dir is not None:
-            #     state_path = romm_user.romm_base_dir / "assets" / Path(s["file_path"])  # link it to the user's base dir. just in case....
-            # else:
-            #     state_path = Path(s["file_path"])
-
             # save slot
             state_ext = s["file_extension"].split("state")
             if state_ext[1]:
@@ -193,11 +187,12 @@ class Game:
         if len(matched):
             # now check modification time to see if sync is needed
             m = matched[0]
-            logger.debug(f"Syncing...{self.name} - {m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
+            logger.debug(f"Checking...{self.name} - {m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
             if m.local.modified_at > m.romm.modified_at:
                 logger.debug(f"Updating save data in ROMM: {m.local.path.name}")
                 m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, id=m.romm.id)
-
+            else:
+                logger.debug("----ROMM is up to date.")
             if len(matched) > 1:
                 logger.debug("There are duplicate files on ROMM (?). Check your ROMM instance.")
 
@@ -207,7 +202,8 @@ class Game:
 
     def sync_local_saves_to_remote(self):
         """Updates/Adds local save files for the game to its romm counterpart.
-        Expects an EXACT match in .srm name here because it assumes the actual ROM is the same ROM as the one in the ROMM library"""
+        Expects an EXACT match in .srm name here because it assumes the actual ROM
+        is the same ROM as the one in the ROMM library"""
         # check if the local save file is already in ROMM
         api_ops = get_config().ROMM_CREDENTIALS.saves
         for lsv in self.local_save_files:
