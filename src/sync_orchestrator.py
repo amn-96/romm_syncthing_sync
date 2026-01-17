@@ -147,10 +147,9 @@ class SyncOrchestrator:
             result.games_synced = successful
             result.games_failed = failed
 
-            # Step 3: Cache the updated state
-            if cache_filepath:
-                logger.info(f"Caching library state to {cache_filepath}")
-                self.local_library.to_json(cache_filepath)
+            # if cache_filepath:
+            #     logger.info(f"Caching library state to {cache_filepath}")
+            #     self.local_library.to_json(cache_filepath)
 
             result.success = len(failed) == 0
             if len(successful) == 0 and len(failed) == 0:
@@ -207,10 +206,9 @@ class SyncOrchestrator:
             result.games_synced = successful
             result.games_failed = failed
 
-            # Step 4: Cache the updated state
-            if cache_filepath:
-                logger.info(f"Caching library state to {cache_filepath}")
-                self.local_library.to_json(cache_filepath)
+            # if cache_filepath:
+            #     logger.info(f"Caching library state to {cache_filepath}")
+            #     self.local_library.to_json(cache_filepath)
 
             result.success = len(failed) == 0
             logger.info("---------- Watchdog sync completed ----------")

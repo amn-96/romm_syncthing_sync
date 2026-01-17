@@ -8,21 +8,23 @@ import sys
 from time import perf_counter as tpc
 import threading
 from dotenv import load_dotenv
-
-# Load environment variables early
-load_dotenv()
-
 # internal imports
 from src.romm_sync import initialize_romm_sync, full_sync, cleanup
 from src.sync_orchestrator import SyncManager, FileChangeHandler
 
+# Load environment variables early
+load_dotenv()
+
+# region Logging Setup
 # Configure logging with custom TRACE level
 TRACE_LEVEL = 5
 logging.addLevelName(TRACE_LEVEL, "TRACE")
 
+
 def trace(self, message, *args, **kwargs):
     if self.isEnabledFor(TRACE_LEVEL):
         self._log(TRACE_LEVEL, message, args, **kwargs)
+
 
 logging.Logger.trace = trace
 
@@ -36,6 +38,7 @@ logging.basicConfig(
 # Suppress verbose watchdog logging by default
 logging.getLogger("watchdog.observers.inotify_c").setLevel(TRACE_LEVEL)
 logging.getLogger("watchdog").setLevel(logging.INFO)
+# endregion 
 
 
 def run_periodic_sync(app_cfg):
@@ -112,14 +115,6 @@ def run_watch_sync(srv, lcl, app_cfg):
 def main():
     """Main orchestration function."""
     app_cfg, srv, lcl = initialize_romm_sync()
-
-    # Reconfigure logging with the log level from config
-    logging.basicConfig(
-        level=getattr(logging, app_cfg.LOG_LEVEL.upper(), logging.INFO),
-        format="%(asctime)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        force=True
-    )
 
     logger.info("Romm_sync starting...")
 

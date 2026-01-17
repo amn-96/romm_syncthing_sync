@@ -102,23 +102,23 @@ class LocalLibrary:
         self.sync_folder = sync_folder
         self.games: Dict[str, Game] = {}
 
-    # Initialize from a previously-built JSON file to save time.   
-    @classmethod
-    def from_json(cls, filepath: Path, sync_folder: Path) -> 'LocalLibrary':
-        """Load catalog from JSON file."""
-        local_library = cls(sync_folder)
-        try:
-            with open(filepath, 'r') as f:
-                data = json.load(f)
-        except FileNotFoundError as fe:
-            logger.info("No existing cache file found.")
-            raise (fe)
-        except Exception as e:
-            logger.error(f"{e}")
-            raise (e)
+    # # Initialize from a previously-built JSON file to save time.   
+    # @classmethod
+    # def from_json(cls, filepath: Path, sync_folder: Path) -> 'LocalLibrary':
+    #     """Load catalog from JSON file."""
+    #     local_library = cls(sync_folder)
+    #     try:
+    #         with open(filepath, 'r') as f:
+    #             data = json.load(f)
+    #     except FileNotFoundError as fe:
+    #         logger.info("No existing cache file found.")
+    #         raise (fe)
+    #     except Exception as e:
+    #         logger.error(f"{e}")
+    #         raise (e)
         
-        local_library.games = {game_data['name']: Game.from_dict(game_data) for game_data in data}
-        return local_library
+    #     local_library.games = {game_data['name']: Game.from_dict(game_data) for game_data in data}
+    #     return local_library
     
     # region Scan Functions
     @staticmethod
@@ -349,14 +349,14 @@ class LocalLibrary:
         else:
             logging.warning(f"No saves or states were found in {self.sync_folder}.")
 
-    def _to_dict(self) -> list:
-        """Serialize entire catalog to list of dictionaries for caching."""
-        return [game.to_dict() for game in self.games.values()]
+    # def _to_dict(self) -> list:
+    #     """Serialize entire catalog to list of dictionaries for caching."""
+    #     return [game.to_dict() for game in self.games.values()]
 
-    def to_json(self, filepath: Path) -> None:
-        """Save catalog to JSON file for caching between runs."""
-        with open(filepath, 'w') as f:
-            json.dump(self._to_dict(), f, indent=2)
+    # def to_json(self, filepath: Path) -> None:
+    #     """Save catalog to JSON file for caching between runs."""
+    #     with open(filepath, 'w') as f:
+    #         json.dump(self._to_dict(), f, indent=2)
     # endregion
 
     # region File Watcher / Sync Functions
