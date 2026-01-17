@@ -23,11 +23,11 @@ class SaveState:
     path: Path
     platform_id: int
     emulator: str | None
-    id: int
     modified_at: datetime
     slot: int
     in_sync: bool = False  # initialize with False so it has to be checked
     romm_api: RommStates = field(default=None)
+    id: int | None = None  # will only be populated if the romm save exists
 
     def __post_init__(self):  # gets its own reference to the api function for nice syntax
         if self.romm_api is None:
@@ -40,9 +40,9 @@ class SaveFile:
     path: Path
     platform_id: int
     modified_at: datetime
-    id: int | None = None
     in_sync: bool = False  # initialize with False so it has to be checked
     romm_api: RommSaves = field(default=None)
+    id: int | None = None
 
     def __post_init__(self):  # gets its own reference to the api function for nice syntax
         if self.romm_api is None:
