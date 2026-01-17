@@ -54,8 +54,8 @@ def run_periodic_sync(app_cfg):
 def run_watch_sync(srv, lcl, app_cfg):
     """Run ROMM sync in watch mode, syncing on file system changes."""
     # Verify directory exists
-    if not Path(app_cfg.DIRECTORY).exists():
-        logger.error(f"Directory does not exist: {app_cfg.DIRECTORY}")
+    if not Path(app_cfg.SYNC_DIR).exists():
+        logger.error(f"Directory does not exist: {app_cfg.SYNC_DIR}")
         sys.exit(1)
 
     # Create sync manager with configurable delay and cache filepath
@@ -76,7 +76,7 @@ def run_watch_sync(srv, lcl, app_cfg):
     # Create event handler with sync manager
     event_handler = FileChangeHandler(sync_manager)
     observer = Observer()
-    observer.schedule(event_handler, str(app_cfg.DIRECTORY), recursive=True)
+    observer.schedule(event_handler, str(app_cfg.SYNC_DIR), recursive=True)
 
     # Start observer
     observer.start()

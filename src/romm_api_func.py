@@ -128,7 +128,7 @@ class RommStates:
     def add(self,
             local_filepath: str | Path,
             rom_id: int,
-            emulator: Optional[str] = None) -> Dict:
+            emulator: str | None = None) -> Dict:
         """Upload a new state file to ROMM.
 
         Args:
@@ -161,7 +161,7 @@ class RommStates:
     def update(self,
                local_filepath: str | Path,
                rom_id: int,
-               emulator: str) -> Dict:
+               emulator: str | None = None) -> Dict:
         """Update an existing state file in ROMM.
 
         Args:
