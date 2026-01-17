@@ -67,7 +67,7 @@ class RommSaves:
     def update(self,
                  local_filepath: str | Path,
                  rom_id: int,
-                 save_id: int) -> Dict:
+                 id: int) -> Dict:
         """Update an existing save file in ROMM.
 
         Args:
@@ -161,7 +161,7 @@ class RommStates:
     def update(self,
                local_filepath: str | Path,
                rom_id: int,
-               state_id: int,
+               id: int,
                emulator: str | None = None) -> Dict:
         """Update an existing state file in ROMM.
 

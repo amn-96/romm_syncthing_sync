@@ -196,7 +196,7 @@ class Game:
             logger.debug(f"Syncing...{self.name} - {m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
             if m.local.modified_at > m.romm.modified_at:
                 logger.debug(f"Updating save data in ROMM: {m.local.path.name}")
-                m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, save_id=m.romm.id)
+                m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, id=m.romm.id)
 
             if len(matched) > 1:
                 logger.debug("There are duplicate files on ROMM? This message is experimental.")
