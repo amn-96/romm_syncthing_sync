@@ -5,6 +5,7 @@ services:
     build: .
     container_name: romm-sync
     restart: unless-stopped
+    env_file: .env
     volumes:
       - ${SYNC_FOLDER}:/syncdata:ro  # bind mounts the local library
       - ./data:/appdata

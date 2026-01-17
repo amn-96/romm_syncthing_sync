@@ -1,4 +1,7 @@
 """Configuration management using environment variables."""
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from pathlib import Path
 from typing import Optional

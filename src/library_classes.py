@@ -9,7 +9,7 @@ import json
 
 # program imports
 from .games_class import Game
-from .config import RommUser
+from .romm_api_func import RommUser
 
 logger = logging.getLogger(__name__)
 
