@@ -4,13 +4,11 @@ romm_sync main module. Initializes sync system and manages sync modes (full sync
 """
 import sys
 import logging
-import signal
 from pathlib import Path
-from watchdog.observers import Observer
 
-from .config import Config, get_config, DIRECTORY
+from .config import Config, get_config
 from .library_classes import RetroGameServer, LocalLibrary
-from .sync_orchestrator import SyncOrchestrator, SyncManager, FileChangeHandler
+from .sync_orchestrator import SyncOrchestrator, SyncManager
 
 logger = logging.getLogger(__name__)
 
