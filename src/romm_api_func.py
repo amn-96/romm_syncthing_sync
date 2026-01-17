@@ -4,6 +4,9 @@ from typing import Optional, List, Dict
 import requests
 from requests.auth import HTTPBasicAuth
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
