@@ -1,6 +1,7 @@
 # external library imports
 from watchdog.observers import Observer
 import logging
+import os
 from pathlib import Path
 import signal
 import sys
@@ -27,7 +28,7 @@ logging.Logger.trace = trace
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
