@@ -27,6 +27,7 @@ logging.getLogger("watchdog").setLevel(logging.INFO)
 logging.getLogger("requests").setLevel(TRACE)
 logging.getLogger("urllib3").setLevel(TRACE)
 logging.getLogger("urllib3.connectionpool").setLevel(TRACE)
+logging.getLogger("httplib").setLevel(TRACE)
 # endregion
 
 
