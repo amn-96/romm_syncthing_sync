@@ -400,7 +400,7 @@ class LocalLibrary:
     @staticmethod
     def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
         """Watchdog can catch a lot of temporary syncthing files or conflicts. This function filters that out."""
-        event = Path(event_path.name)
+        event = event_path.name
         filter_list = ["syncthing", "conflict", "~"]  # reliably forbidden characters
         if not any([forbidden in event for forbidden in filter_list]):
             logger.debug(f"[WATCHDOG] Found modified savedata: {event}.")
@@ -429,7 +429,7 @@ class LocalLibrary:
         # Pre-filter captured events for the relevant file changes.
         # If we don't do this, every chunk that syncthing pushes will get processed. The sync is robust enough to reject these, but it clutters the logs.
         for event_path in event_paths:
-            game_name = self._detect_game_from_watchdog_event(event_path)
+            game_name = self._detect_game_from_watchdog_event(Path(event_path))
             if game_name is not None:
                 if game_name not in game_changed_files:
                     game_changed_files[game_name] = set()
