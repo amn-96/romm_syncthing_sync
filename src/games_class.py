@@ -125,6 +125,7 @@ class Game:
         """Fetches all saves associated with this game from ROMM API and populates the Game instance.
         Returns the serialized response for debugging/scripting, but this will be ignored by main()
         """
+        self.romm_save_files.clear()
         api_ops = get_config().ROMM_CREDENTIALS.saves
 
         response: list[dict] = api_ops.get(self.romm_id, self.romm_platform_id)
@@ -144,6 +145,7 @@ class Game:
         """Fetches all states associated with this game from ROMM API and populates the Game instance.
         Returns the serialized response for debugging/scripting, but this will be ignored by main()
         """
+        self.romm_state_files.clear()
         api_ops = get_config().ROMM_CREDENTIALS.states
 
         response: list[dict] = api_ops.get(self.romm_id, self.romm_platform_id)
