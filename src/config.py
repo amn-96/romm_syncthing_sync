@@ -47,6 +47,9 @@ class Config:
         self.LOG_LEVEL = log_level
         self.LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+        # Initialize logging with the specified level
+        LoggingConfig.setup(log_level=self.LOG_LEVEL)
+
         # Feature Flags
         self.DRY_RUN = dry_run
         self.ENABLE_METRICS = enable_metrics
@@ -132,16 +135,23 @@ class LoggingConfig:
         return filter_func
 
     @classmethod
-    def setup(cls, log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()):
-        """Configure loguru logging and return logger instance."""
+    def setup(cls, log_level: str | None = None):
+        """Configure loguru logging and return logger instance.
 
-        if cls._initialized:
-            return logger
+        Can be called multiple times - will reconfigure if log_level differs from current.
+        """
 
         if log_level is None:
             log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         else:
             log_level = log_level.upper()
+
+        # Skip if already initialized with the same level
+        if cls._initialized and hasattr(cls, '_current_level') and cls._current_level == log_level:
+            return logger
+
+        # Allow reconfiguration if level changed
+        cls._current_level = log_level
 
         # Remove default handler
         logger.remove()
@@ -234,9 +244,6 @@ class LoggingConfig:
 
         return logger
 
-
-# Initialize logging on module import
-LoggingConfig.setup()
 
 # Export TRACE constant for convenience (loguru has TRACE=5 built-in)
 TRACE = 5

@@ -65,8 +65,6 @@ class SyncOrchestrator:
                     game.fetch_romm_states()
                 except Exception as e:
                     logger.error(f"Failed to fetch ROMM data for {game.name}: {e}")
-            else:
-                logger.warning(f"{game.name} is not in ROMM library. Upload this game to your ROMM server to push the local save data.")
 
     def _push_local_to_romm(self, games: List[Game]) -> tuple[List[Game], List[tuple[Game, Exception]]]:
         """Push local saves and states to ROMM.
@@ -90,9 +88,6 @@ class SyncOrchestrator:
                 except Exception as e:
                     logger.error(f"Failed to sync {game.name} to ROMM: {e}")
                     failed.append((game, e))
-            else:
-                logger.warning(f"{game.name} is not in ROMM library. Upload this game to your ROMM server to push the local savedata.")
-
         return successful, failed
 
     def _validate_games(self, games: List[Game]) -> tuple[List[Game], List[Game]]:
@@ -133,7 +128,9 @@ class SyncOrchestrator:
 
             if not matched_games:
                 logger.debug("[FULLSYNC] No matched games found for syncing")
-                result.success = True
+                result.success = False
+                result.games_synced, result.games_failed = [], []
+                result.error_message = "No matched games found for syncing"
                 return result
 
             # Step 1: Fetch current ROMM state
@@ -191,7 +188,9 @@ class SyncOrchestrator:
 
             if not games_to_sync:
                 logger.info("[WATCHDOGSYNC] No games in ROMM library found matching local library. Will not sync.")
-                result.success = True
+                result.success = False
+                result.games_synced, result.games_failed = [], []
+                result.error_message = "No matched games found for syncing"
                 return result
 
             logger.info(f"[WATCHDOGSYNC] Syncing save data for {len(games_to_sync)} games...")
