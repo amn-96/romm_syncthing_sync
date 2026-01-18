@@ -17,18 +17,7 @@ from src.sync_orchestrator import SyncManager, FileChangeHandler
 load_dotenv()
 
 
-# region Logging Setup
 logger = logging.getLogger(__name__)
-# Move watchdog event logs down to TRACE, otherwise debug will be impossible to use.
-logging.getLogger("watchdog.observers.inotify_c").setLevel(TRACE)
-logging.getLogger("watchdog").setLevel(logging.INFO)
-
-# Move requests connection logs down to TRACE as well. Not as bad as watchdog, but
-logging.getLogger("requests").setLevel(TRACE)
-logging.getLogger("urllib3").setLevel(TRACE)
-logging.getLogger("urllib3.connectionpool").setLevel(TRACE)
-logging.getLogger("httplib").setLevel(TRACE)
-# endregion
 
 
 def run_periodic_sync(app_cfg):
