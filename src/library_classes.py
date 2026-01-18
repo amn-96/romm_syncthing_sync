@@ -366,14 +366,6 @@ class LocalLibrary:
 
         Expects the directory structure: sync_folder/platform_name/game_name.ext
         Follows the same initialization pattern as build_from_scratch for a single game.
-
-        Args:
-            event_file_path: Path to the file that triggered the watchdog event
-            romm_library: RetroGameServer instance for ROMM matching
-            romm_user: RommUser credentials for API calls
-
-        Returns:
-            The newly created Game object, or None if it couldn't be created
         """
         try:
             # Extract platform and game name from path
@@ -398,11 +390,22 @@ class LocalLibrary:
 
             # Add to games dict
             self.games[game_name] = new_game
-            logger.info(f"Added new game to library: {game_name}")
+            logger.info(f"[WATCHDOG] Added new game to library: {game_name}")
 
             return new_game
         except Exception as e:
-            logger.error(f"Error adding new game from watchdog event: {e}")
+            logger.error(f"[WATCHDOG] Error adding new game from file change event: {e}")
+            return None
+    
+    @staticmethod
+    def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
+        """Watchdog can catch a lot of temporary syncthing files or conflicts. This function filters that out."""
+        event = Path(event_path.name)
+        filter_list = ["syncthing", "conflict", "~"]  # reliably forbidden characters
+        if not any([forbidden in event for forbidden in filter_list]):
+            logger.debug(f"[WATCHDOG] Found modified savedata: {event}.")
+            return event_path.split(".")[0]  # game name will be everything before the FIRST extension
+        else:
             return None
 
     def extract_games_from_watchdog_events(self,
@@ -421,28 +424,35 @@ class LocalLibrary:
         Returns:
             List of affected Game objects (deduplicated) ready for sync operations
         """
+        game_changed_files = {}  # game_name -> set of Path objects
+
+        # Pre-filter captured events for the relevant file changes.
+        # If we don't do this, every chunk that syncthing pushes will get processed. The sync is robust enough to reject these, but it clutters the logs.
+        for event_path in event_paths:
+            game_name = self._detect_game_from_watchdog_event(event_path)
+            if game_name is not None:
+                if game_name not in game_changed_files:
+                    game_changed_files[game_name] = set()
+                game_changed_files[game_name].add(Path(event_path))
+
         affected_games_dict = {}  # game_name -> Game object
 
-        for event_path in event_paths:
-            path_obj = Path(event_path)
-            game_name = path_obj.name.split('.')[0]
-
-            # Skip if we've already processed this game
-            if game_name in affected_games_dict:
-                continue
-
+        for game_name, changed_files in game_changed_files.items():
             # Find or create the game
-            matching_game = self.get_game_by_name(game_name)
-            if not matching_game:
-                logger.info(f"New game detected: {game_name}")
-                matching_game = self._add_new_game_from_watchdog_event(path_obj, romm_library)
-                if not matching_game:
-                    logger.warning(f"Failed to add new game: {game_name}")
+            matching_Game = self.get_game_by_name(game_name)
+            if not matching_Game:
+                logger.info(f"[WATCHDOG] New game detected: {game_name}")
+                # Use the first changed file to initialize the game
+                matching_Game = self._add_new_game_from_watchdog_event(changed_files[0], romm_library)
+                if not matching_Game:
+                    logger.warning(f"[WATCHDOG] Failed to add new game: {game_name}")
                     continue
+            else:
+                logger.info(f"[WATCHDOG] {game_name} has {len(changed_files)} files to be synced.")
 
-            # Rescan the game's directory to pick up any new/updated save files
-            self._rescan_local_saves_and_states(matching_game)
-            affected_games_dict[game_name] = matching_game
+            # Rescan the game's directory to pick up any new/updated save files.
+            self._rescan_local_saves_and_states(matching_Game)
+            affected_games_dict[game_name] = matching_Game
 
         return list(affected_games_dict.values())
     # endregion
