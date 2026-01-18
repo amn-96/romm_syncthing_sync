@@ -1,8 +1,10 @@
 """Configuration management using environment variables."""
 import os
+import sys
 import logging
 from pathlib import Path
 from typing import Optional
+from loguru import logger
 from .romm_api_func import RommUser
 from dotenv import load_dotenv
 load_dotenv()
@@ -90,80 +92,100 @@ def get_config() -> Config:
 
 
 class LoggingConfig:
-    """Centralized logging configuration with TraceLogger support."""
-
-    class TraceLogger(logging.Logger):
-        """Custom logger with TRACE level support."""
-        TRACE = 5
-
-        def trace(self, message, *args, **kwargs):
-            """Log a trace-level message."""
-            if self.isEnabledFor(self.TRACE):
-                self._log(self.TRACE, message, *args, **kwargs)
+    """Centralized logging configuration using loguru."""
 
     _initialized = False
 
     @classmethod
-    def _configure_library_levels(cls, log_level: str) -> None:
+    def _get_filter_func(cls, log_level: str):
         """Conditional configuration for watchdog and requests because
-        their matching levels are too verbose for INFO and DEBUG. 
+        their matching levels are too verbose for INFO and DEBUG.
         Using the custom TRACE level to allow the option to see them.
+
+        Returns a filter function that implements per-library level control.
         """
-        if log_level == "TRACE":
-            # TRACE: Set watchdog/inotify to INFO (their debug is too verbose for our trace)
-            # and requests/urllib to INFO (they log requests at INFO)
-            logging.getLogger("watchdog").setLevel(logging.INFO)
-            logging.getLogger("requests").setLevel(logging.INFO)
-            logging.getLogger("urllib3").setLevel(logging.INFO)
-        elif log_level == "DEBUG":
-            # DEBUG: Set watchdog/inotify to INFO and requests to WARNING
-            logging.getLogger("watchdog").setLevel(logging.INFO)
-            logging.getLogger("requests").setLevel(logging.WARNING)
-            logging.getLogger("urllib3").setLevel(logging.WARNING)
-        elif log_level == "INFO":
-            logging.getLogger("requests").setLevel(logging.WARNING)
-            logging.getLogger("urllib3").setLevel(logging.WARNING)
-        else:
-            # WARNING, ERROR, CRITICAL: Match the root log level
-            root_numeric = getattr(logging, log_level, logging.INFO)
-            logging.getLogger("watchdog.observers.inotify_c").setLevel(root_numeric)
-            logging.getLogger("watchdog").setLevel(root_numeric)
-            logging.getLogger("requests").setLevel(root_numeric)
-            logging.getLogger("urllib3").setLevel(root_numeric)
+        def filter_func(record):
+            # For intercepted stdlib logs, check the 'name' in extra dict
+            # For native loguru logs, use record["name"]
+            module = record.get("extra", {}).get("stdlib_name", record["name"])
+
+            if log_level == "TRACE":
+                # TRACE: Set watchdog/inotify to INFO (their debug is too verbose for our trace)
+                # and requests/urllib to INFO (they log requests at INFO)
+                if module.startswith("watchdog"):
+                    return record["level"].no >= 20  # INFO and above
+                if module.startswith(("requests", "urllib3")):
+                    return record["level"].no >= 20  # INFO and above
+            elif log_level == "DEBUG":
+                # DEBUG: Set watchdog/inotify to INFO and requests to WARNING
+                if module.startswith("watchdog"):
+                    return record["level"].no >= 20  # INFO and above
+                if module.startswith(("requests", "urllib3")):
+                    return record["level"].no >= 30  # WARNING and above
+            elif log_level == "INFO":
+                # INFO: Set requests/urllib to WARNING
+                if module.startswith(("requests", "urllib3")):
+                    return record["level"].no >= 30  # WARNING and above
+            # For all other levels (WARNING, ERROR, CRITICAL) or modules, use global level
+            return True
+
+        return filter_func
 
     @classmethod
-    def setup(cls, log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()) -> logging.Logger:
-        """Configure logging with a lower level TraceLogger and return root logger."""
+    def setup(cls, log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()):
+        """Configure loguru logging and return logger instance."""
 
         if cls._initialized:
-            return logging.getLogger()
+            return logger
 
         if log_level is None:
             log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         else:
             log_level = log_level.upper()
 
-        # Set custom logger class and add TRACE level
-        logging.setLoggerClass(cls.TraceLogger)
-        logging.addLevelName(cls.TraceLogger.TRACE, "TRACE")
+        # Remove default handler
+        logger.remove()
 
-        # Configure basicConfig
-        logging.basicConfig(
-            level=getattr(logging, log_level, logging.INFO),
-            format="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
+        # Add custom handler with our format and filter
+        logger.add(
+            sys.stderr,
+            format="{time:YYYY-MM-DD HH:mm:ss}: {message}",
+            level=log_level if log_level != "TRACE" else 5,
+            filter=cls._get_filter_func(log_level)
         )
 
-        # Auto-configure conditional levels for verbose libraries
-        cls._configure_library_levels(log_level)
+        # Intercept stdlib logging (for watchdog, requests, urllib3)
+        # This redirects all stdlib logging to loguru
+        class InterceptHandler(logging.Handler):
+            def emit(self, record):
+                # Get corresponding Loguru level if it exists
+                try:
+                    level = logger.level(record.levelname).name
+                except ValueError:
+                    level = record.levelno
+
+                # Find caller from where the logged message originated
+                frame, depth = logging.currentframe(), 2
+                while frame and frame.f_code.co_filename == logging.__file__:
+                    frame = frame.f_back
+                    depth += 1
+
+                # Pass the stdlib logger name in extra so the filter can use it
+                logger.bind(stdlib_name=record.name).opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+        # Set up interception for stdlib logging
+        logging.basicConfig(handlers=[InterceptHandler()], level=0)
+        # Also set handlers on root logger to be safe
+        logging.root.handlers = [InterceptHandler()]
+        logging.root.setLevel(0)
 
         cls._initialized = True
 
-        return logging.getLogger()
+        return logger
 
 
 # Initialize logging on module import
 LoggingConfig.setup()
 
-# Export TRACE constant for convenience
-TRACE = LoggingConfig.TraceLogger.TRACE
+# Export TRACE constant for convenience (loguru has TRACE=5 built-in)
+TRACE = 5

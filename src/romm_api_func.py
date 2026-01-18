@@ -3,9 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 import requests
 from requests.auth import HTTPBasicAuth
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class RommSaves:

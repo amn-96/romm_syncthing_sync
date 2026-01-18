@@ -3,14 +3,12 @@ In general, these are one step abstracted over Game, so they operate on groups o
 from pathlib import Path
 from typing import List, Dict, Optional
 import pandas as pd
-import logging
+from loguru import logger
 import re
 
 # program imports
 from .games_class import Game
 from .romm_api_func import RommUser
-
-logger = logging.getLogger(__name__)
 
 
 class RetroGameServer:
@@ -315,13 +313,13 @@ class LocalLibrary:
         matched = sum(1 for g in self.games.values() if g.is_matched)
         with_saves = sum(1 for g in self.games.values() if g.local_save_files)
 
-        logging.debug(f"Total games in sync folder: {total}")
+        logger.debug(f"Total games in sync folder: {total}")
         if total > 0:
-            logging.debug(f"Matched to ROMM: {matched} ({matched/total*100:.1f}%)")
-            logging.debug(f"With local saves: {with_saves}")
-            logging.debug(f"Unmatched: {total - matched}.")
+            logger.debug(f"Matched to ROMM: {matched} ({matched/total*100:.1f}%)")
+            logger.debug(f"With local saves: {with_saves}")
+            logger.debug(f"Unmatched: {total - matched}.")
         else:
-            logging.warning(f"No saves or states were found in {self.sync_folder}.")
+            logger.warning(f"No saves or states were found in {self.sync_folder}.")
 
     # def _to_dict(self) -> list:
     #     """Serialize entire catalog to list of dictionaries for caching."""
@@ -418,8 +416,8 @@ class LocalLibrary:
             matching_Game = self.get_game_by_name(game_name)
             if not matching_Game:
                 logger.info(f"[WATCHDOG] New game detected: {game_name}")
-                # Use the first changed file to initialize the game
-                matching_Game = self._add_new_game_from_watchdog_event(changed_files[0], romm_library)
+                # Use one of the changed files to add a game. It will be named the same as the ROM by save file/state convention
+                matching_Game = self._add_new_game_from_watchdog_event(next(iter(changed_files)), romm_library)
                 if matching_Game is None:
                     logger.warning(f"[WATCHDOG] Failed to add new game: {game_name}")
                     continue
