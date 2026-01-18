@@ -110,24 +110,19 @@ class LoggingConfig:
         Using the custom TRACE level to allow the option to see them.
         """
         if log_level == "TRACE":
-            # TRACE: Set watchdog to DEBUG (their debug is too verbose for our debug)
+            # TRACE: Set watchdog/inotify to INFO (their debug is too verbose for our trace)
             # and requests/urllib to INFO (they log requests at INFO)
-            logging.getLogger("watchdog.observers.inotify_c").setLevel(logging.DEBUG)
-            logging.getLogger("watchdog").setLevel(logging.DEBUG)
+            logging.getLogger("watchdog").setLevel(logging.INFO)
             logging.getLogger("requests").setLevel(logging.INFO)
             logging.getLogger("urllib3").setLevel(logging.INFO)
-            logging.getLogger("urllib3.connectionpool").setLevel(logging.INFO)
         elif log_level == "DEBUG":
-            # DEBUG: Set inotify_c to INFO and requests to WARNING
-            logging.getLogger("watchdog.observers.inotify_c").setLevel(logging.INFO)
-            logging.getLogger("watchdog").setLevel(logging.DEBUG)
+            # DEBUG: Set watchdog/inotify to INFO and requests to WARNING
+            logging.getLogger("watchdog").setLevel(logging.INFO)
             logging.getLogger("requests").setLevel(logging.WARNING)
             logging.getLogger("urllib3").setLevel(logging.WARNING)
-            logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
         elif log_level == "INFO":
             logging.getLogger("requests").setLevel(logging.WARNING)
             logging.getLogger("urllib3").setLevel(logging.WARNING)
-            logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
         else:
             # WARNING, ERROR, CRITICAL: Match the root log level
             root_numeric = getattr(logging, log_level, logging.INFO)
@@ -135,7 +130,6 @@ class LoggingConfig:
             logging.getLogger("watchdog").setLevel(root_numeric)
             logging.getLogger("requests").setLevel(root_numeric)
             logging.getLogger("urllib3").setLevel(root_numeric)
-            logging.getLogger("urllib3.connectionpool").setLevel(root_numeric)
 
     @classmethod
     def setup(cls, log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()) -> logging.Logger:
