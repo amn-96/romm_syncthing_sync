@@ -26,7 +26,7 @@ def get_local_library(srv: RetroGameServer, library_path: Path) -> LocalLibrary:
     local_library.build_local_library()
     # Match games to ROMM
     local_library.match_to_romm(list(local_library.games.values()), srv)
-    
+
     # Cache the library
     # cfg = get_config()
     # local_library.to_json(filepath=cfg.CACHE_FILEPATH)

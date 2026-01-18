@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import logging
 from pathlib import Path
 from typing import Optional
 from .romm_api_func import RommUser
@@ -87,3 +88,52 @@ def get_config() -> Config:
         _config = Config()
         _config.validate()
     return _config
+
+
+class LoggingConfig:
+    """Centralized logging configuration with TraceLogger support."""
+
+    class TraceLogger(logging.Logger):
+        """Custom logger with TRACE level support."""
+        TRACE = 5
+
+        def trace(self, message, *args, **kwargs):
+            """Log a trace-level message."""
+            if self.isEnabledFor(self.TRACE):
+                self._log(self.TRACE, message, *args, **kwargs)
+
+    _initialized = False
+
+    @classmethod
+    def setup(cls, log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()) -> logging.Logger:
+        """Configure logging with a lower level TraceLogger and return root logger."""
+        
+        if cls._initialized:
+            return logging.getLogger()
+
+        if log_level is None:
+            log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        else:
+            log_level = log_level.upper()
+
+        # Set custom logger class and add TRACE level
+        logging.setLoggerClass(cls.TraceLogger)
+        logging.addLevelName(cls.TraceLogger.TRACE, "TRACE")
+
+        # Configure basicConfig
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format="%(asctime)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+
+        cls._initialized = True
+
+        return logging.getLogger()
+
+
+# Initialize logging on module import
+LoggingConfig.setup()
+
+# Export TRACE constant for convenience
+TRACE = LoggingConfig.TraceLogger.TRACE

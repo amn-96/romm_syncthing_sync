@@ -53,7 +53,7 @@ class SyncOrchestrator:
         self.romm_server = romm_server
         self.romm_user = romm_user
 
-    def _fetch_romm_state(self, games: List[Game]) -> None:
+    def _fetch_romm_data(self, games: List[Game]) -> None:
         """Fetch current saves and states from ROMM for given games.
 
         Args:
@@ -61,11 +61,12 @@ class SyncOrchestrator:
         """
         for game in games:
             if game.is_matched:
+                logger.debug(f"Fetching ROMM data for {game}")
                 try:
                     game.fetch_romm_saves()
                     game.fetch_romm_states()
                 except Exception as e:
-                    logger.error(f"Failed to fetch ROMM state for {game.name}: {e}")
+                    logger.error(f"Failed to fetch ROMM data for {game.name}: {e}")
             else:
                 logger.warning(f"{game.name} is not in ROMM library. Upload this game to your ROMM server to push the local save data.")
 
@@ -83,6 +84,7 @@ class SyncOrchestrator:
 
         for game in games:
             if game.is_matched:
+                logger.debug(f"Pushing local save data for {game} to ROMM.")
                 try:
                     game.sync_local_saves_to_remote()
                     game.sync_local_states_to_remote()
@@ -132,16 +134,16 @@ class SyncOrchestrator:
             result.unmatched_games = unmatched_games
 
             if not matched_games:
-                logger.debug("No matched games found for syncing")
+                logger.debug("[FULLSYNC] No matched games found for syncing")
                 result.success = True
                 return result
 
             # Step 1: Fetch current ROMM state
-            logger.info(f"Fetching ROMM state for {len(matched_games)} games")
-            self._fetch_romm_state(matched_games)
+            logger.info(f"[FULLSYNC] Fetching ROMM data for {len(matched_games)} games")
+            self._fetch_romm_data(matched_games)
 
             # Step 2: Push local to ROMM
-            logger.info(f"Pushing local changes to ROMM for {len(matched_games)} games")
+            logger.info(f"[FULLSYNC] Syncing local data to ROMM for {len(matched_games)} games")
             successful, failed = self._push_local_to_romm(matched_games)
 
             result.games_synced = successful
@@ -153,7 +155,7 @@ class SyncOrchestrator:
 
             result.success = len(failed) == 0
             if len(successful) == 0 and len(failed) == 0:
-                logger.debug("No changes detected - libraries already in sync")
+                logger.debug("[FULLSYNC] No changes detected - libraries already in sync")
             logger.info("---------- Full sync completed ----------")
 
             return result
@@ -161,7 +163,7 @@ class SyncOrchestrator:
         except Exception as e:
             result.success = False
             result.error_message = str(e)
-            logger.error(f"Full sync failed: {e}", exc_info=True)
+            logger.error(f"[FULLSYNC] Failed! {e}", exc_info=True)
             return result
 
     def watchdog_sync(self, event_paths: List[str], cache_filepath: Optional[Path] = None) -> SyncResult:
@@ -179,26 +181,26 @@ class SyncOrchestrator:
 
         try:
             if not event_paths:
-                logger.debug("No events to process")
+                logger.info("[WATCHDOGSYNC] No events to process")
                 result.success = True
                 return result
 
             # Step 1: Extract affected games from watchdog events
-            logger.info(f"Processing {len(event_paths)} file change events...")
+            logger.info(f"[WATCHDOGSYNC] Processing {len(event_paths)} file change events...")
             games_to_sync = self.local_library.extract_games_from_watchdog_events(
                 event_paths,
                 self.romm_server
             )
 
             if not games_to_sync:
-                logger.debug("No matching games found in events")
+                logger.info("[WATCHDOGSYNC] No games in ROMM library found matching local library. Will not sync.")
                 result.success = True
                 return result
 
-            logger.info(f"Syncing save data for {len(games_to_sync)} games...")
+            logger.info(f"[WATCHDOGSYNC] Syncing save data for {len(games_to_sync)} games...")
 
             # Step 2: Fetch current ROMM state
-            self._fetch_romm_state(games_to_sync)
+            self._fetch_romm_data(games_to_sync)
 
             # Step 3: Push local to ROMM
             successful, failed = self._push_local_to_romm(games_to_sync)
@@ -218,7 +220,7 @@ class SyncOrchestrator:
         except Exception as e:
             result.success = False
             result.error_message = str(e)
-            logger.error(f"Watchdog sync failed: {e}", exc_info=True)
+            logger.error(f"[WATCHDOGSYNC] Failed! {e}", exc_info=True)
             return result
 
 
@@ -249,8 +251,7 @@ class SyncManager:
         """Schedule sync to run after watchdog_delay_seconds of file system inactivity.
 
         If a sync is already in progress, events are queued for the next sync cycle.
-        If a timer is already scheduled, it's cancelled and restarted to ensure
-        the sync happens after file activity stops.
+        If a timer is already scheduled, it's cancelled and restarted if an event happens within WATCHDOG_DELAY_SECONDS debounce period.
         """
         with self.timer_lock:
             # Don't schedule if sync is already running; events will be processed next cycle

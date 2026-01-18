@@ -139,7 +139,7 @@ class Game:
                          platform_id=self.romm_platform_id,
                          modified_at=save_mtime,
                          id=s['id']))
-
+        logger.debug(f"Fetched ROMM saves for {self.name}.")
         return response
 
     def fetch_romm_states(self):
@@ -171,6 +171,7 @@ class Game:
                                                    id=s['id'],
                                                    slot=save_slot,
                                                    emulator=None))
+        logger.debug(f"Fetched ROMM states for {self.name}.")
         return response
     # endregion
 

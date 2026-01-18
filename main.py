@@ -1,13 +1,14 @@
 # external library imports
 from watchdog.observers import Observer
-import logging
-import os
 from pathlib import Path
 import signal
 import sys
 from time import perf_counter as tpc
 import threading
 from dotenv import load_dotenv
+# logging special import
+from src.config import LoggingConfig, TRACE
+import logging
 # internal imports
 from src.romm_sync import initialize_romm_sync, full_sync, cleanup
 from src.sync_orchestrator import SyncManager, FileChangeHandler
@@ -15,30 +16,18 @@ from src.sync_orchestrator import SyncManager, FileChangeHandler
 # Load environment variables early
 load_dotenv()
 
+
 # region Logging Setup
-# Configure logging with custom TRACE level
-TRACE_LEVEL = 5
-logging.addLevelName(TRACE_LEVEL, "TRACE")
-
-
-def trace(self, message, *args, **kwargs):
-    if self.isEnabledFor(TRACE_LEVEL):
-        self._log(TRACE_LEVEL, message, args, **kwargs)
-
-
-logging.Logger.trace = trace
-
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
-    format="%(asctime)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-
-# Suppress verbose watchdog logging by default
-logging.getLogger("watchdog.observers.inotify_c").setLevel(TRACE_LEVEL)
+# Move watchdog event logs down to TRACE, otherwise debug will be impossible to use.
+logging.getLogger("watchdog.observers.inotify_c").setLevel(TRACE)
 logging.getLogger("watchdog").setLevel(logging.INFO)
-# endregion 
+
+# Move requests connection logs down to TRACE as well. Not as bad as watchdog, but
+logging.getLogger("requests").setLevel(TRACE)
+logging.getLogger("urllib3").setLevel(TRACE)
+logging.getLogger("urllib3.connectionpool").setLevel(TRACE)
+# endregion
 
 
 def run_periodic_sync(app_cfg):

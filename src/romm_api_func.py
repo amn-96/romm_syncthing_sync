@@ -32,7 +32,7 @@ class RommSaves:
             "platform_id": platform_id
         }
         response = requests.get(url, auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password), params=params)
-        logger.debug(f"GET /api/saves - Status Code: {response.status_code}")
+        logger.debug(f"GET {url} - {response.status_code}")
         return response.json()
 
     def add(self,
@@ -61,7 +61,7 @@ class RommSaves:
                 params=params,
                 files=files
             )
-            logger.debug(f"POST /api/saves/ - Status Code: {response.status_code}")
+            logger.debug(f"POST {url} - {response.status_code}")
             # return response.json()
 
     def update(self,
@@ -93,7 +93,7 @@ class RommSaves:
                 auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
                 files=files
             )
-            logger.debug(f"PUT /api/saves/{id} - Status Code: {response.status_code}")
+            logger.debug(f"PUT {url} - {response.status_code}")
             return response.json()
 
 
@@ -121,7 +121,7 @@ class RommStates:
             "platform_id": platform_id
         }
         response = requests.get(url, auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password), params=params)
-        logger.debug(f"GET /api/states - Status Code: {response.status_code}")
+        logger.debug(f"GET {url} - {response.status_code}")
 
         return response.json()
 
@@ -155,7 +155,7 @@ class RommStates:
                 params=params,
                 files=files
             )
-            logger.debug(f"POST /api/states/ - Status Code: {response.status_code}")
+            logger.debug(f"POST {url} - {response.status_code}")
             return response.json()
 
     def update(self,
@@ -189,7 +189,7 @@ class RommStates:
                 auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
                 files=files
             )
-            logger.debug(f"PUT /api/states/{id} - Status Code: {response.status_code}")
+            logger.debug(f"PUT {url} - {response.status_code}")
             return response.json()
 
 
@@ -242,7 +242,7 @@ class RommUser:
         """
         url = f"{self.url}{endpoint}"
         response = requests.get(url, auth=HTTPBasicAuth(self.user, self.password), params=params)
-        logger.debug(f"Status Code: {response.status_code}")
+        logger.debug(f"GET {url} - {response.status_code}")
         return response.json()
 
     def _post(self,
@@ -265,7 +265,7 @@ class RommUser:
                                  params=params,
                                  data=data,
                                  headers=headers)
-        logger.debug(f"Status Code: {response.status_code}")
+        logger.debug(f"POST {url} - {response.status_code}")
         return response.json()
 
     def _put(self,
@@ -281,7 +281,7 @@ class RommUser:
         """
         url = f"{self.url}{endpoint}"
         response = requests.put(url, auth=HTTPBasicAuth(self.user, self.password), params=params)
-        logger.debug(f"Status Code: {response.status_code}")
+        logger.debug(f"PUT {url} - {response.status_code}")
         return response.json()
 
     def get_full_library(self) -> dict:
@@ -302,12 +302,13 @@ class RommUser:
         while True:
             params = {"limit": limit, "offset": offset}
 
+            url = f"{self.url}/api/roms/"
             response = requests.get(
-                f"{self.url}/api/roms/",
+                url,
                 auth=HTTPBasicAuth(self.user, self.password),
                 params=params
             )
-            logger.debug(f"Offset: {offset}, Limit: {limit}, Status: {response.status_code}")
+            logger.debug(f"GET {url} - {response.status_code} (offset: {offset}, limit: {limit})")
 
             if response.status_code == 400:
                 logger.critical(f"Bad request (400): {response.text}")

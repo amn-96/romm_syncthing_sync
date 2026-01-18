@@ -13,31 +13,6 @@ from .romm_api_func import RommUser
 logger = logging.getLogger(__name__)
 
 
-# Glue Functions: the key pieces that exchange the info needed between LocalLibrary and RetroGameServer
-def match_romm_saves_and_states(games: List[Game]):
-    """Given a list of games, fetch the saves and states present in ROMM for those games.
-        - Running this for every file may take a long time because it requires 2 unique API requests per game.
-        - This function will only be called when necessary, so it is not associated with any library class."""
-    for new_game in games:
-        if new_game.is_matched:
-            new_game.fetch_romm_saves()
-            new_game.fetch_romm_states()
-        else:
-            logger.warning(f"{new_game.name} is not in ROMM library. Upload this game to your ROMM server to push the local savedata.")
-
-
-def push_saves_and_states_to_romm(games: List[Game]):
-    """Given a list of games that have already had romm saves and states added, check local against remote and upload to ROMM as needed.
-        - 1 API request per file!
-        - Written so it can be called only for necessary games i.e. from local repo watchdog list of changes files."""
-    for new_game in games:
-        if new_game.is_matched:
-            new_game.sync_local_saves_to_remote()
-            new_game.sync_local_states_to_remote()
-        else:
-            logger.warning(f"{new_game.name} is not in ROMM library. Upload this game to your ROMM server to push the local savedata.")
-
-
 class RetroGameServer:
     def __init__(self, raw_database, library, by_id, by_platform, games):
         self.raw_database: dict = raw_database
@@ -361,7 +336,7 @@ class LocalLibrary:
     # region File Watcher / Sync Functions
     def _add_new_game_from_watchdog_event(self,
                                           event_file_path: Path,
-                                          romm_library: RetroGameServer) -> Game:
+                                          romm_library: RetroGameServer) -> Game | None:
         """Detect and add a new game based on a watchdog event file path.
 
         Expects the directory structure: sync_folder/platform_name/game_name.ext
@@ -393,10 +368,11 @@ class LocalLibrary:
             logger.info(f"[WATCHDOG] Added new game to library: {game_name}")
 
             return new_game
+
         except Exception as e:
             logger.error(f"[WATCHDOG] Error adding new game from file change event: {e}")
             return None
-    
+
     @staticmethod
     def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
         """Watchdog can catch a lot of temporary syncthing files or conflicts. This function filters that out."""
@@ -404,7 +380,7 @@ class LocalLibrary:
         filter_list = ["syncthing", "conflict", "~"]  # reliably forbidden characters
         if not any([forbidden in event for forbidden in filter_list]):
             logger.debug(f"[WATCHDOG] Found modified savedata: {event}.")
-            return event_path.split(".")[0]  # game name will be everything before the FIRST extension
+            return str(event).split(".")[0]  # game name will be everything before the FIRST extension
         else:
             return None
 
@@ -444,7 +420,7 @@ class LocalLibrary:
                 logger.info(f"[WATCHDOG] New game detected: {game_name}")
                 # Use the first changed file to initialize the game
                 matching_Game = self._add_new_game_from_watchdog_event(changed_files[0], romm_library)
-                if not matching_Game:
+                if matching_Game is None:
                     logger.warning(f"[WATCHDOG] Failed to add new game: {game_name}")
                     continue
             else:
