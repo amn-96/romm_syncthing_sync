@@ -193,7 +193,7 @@ class Game:
             else:
                 logger.debug("----ROMM is up to date.")
             if len(matched) > 1:
-                logger.debug("There are duplicate files on ROMM (?). Check your ROMM instance.")
+                logger.debug(f"Multiple files on ROMM? {matched}")
 
         else:  # local present but not in romm --> add
             logger.debug(f"ADDING SAVE to ROMM: {savedata.path.name}")
