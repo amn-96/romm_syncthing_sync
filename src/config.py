@@ -146,19 +146,23 @@ class LoggingConfig:
         # Remove default handler
         logger.remove()
 
-        # Custom format function for colored module names
+        # Custom format function with module-colored timestamps
         def format_record(record):
             module = record.get("extra", {}).get("stdlib_name", record["name"])
             level_name = record["level"].name
 
-            # Color code based on module
+            # Color code timestamp based on module
             if module.startswith("watchdog"):
-                module_colored = f"<light-blue>{module}</light-blue>"  # Distinct from level colors
+                timestamp_colored = "<light-blue>{time:YYYY-MM-DD HH:mm:ss}</light-blue>"
             elif module.startswith(("requests", "urllib3", "src.romm_api_func", "romm_api_func")):
-                module_colored = f"<magenta>{module}</magenta>"
+                timestamp_colored = "<magenta>{time:YYYY-MM-DD HH:mm:ss}</magenta>"
+            elif module.startswith(("src.sync_orchestrator", "sync_orchestrator")):
+                timestamp_colored = "<light-red>{time:YYYY-MM-DD HH:mm:ss}</light-red>"
+            elif module.startswith(("src.library_classes", "library_classes", "src.games_class", "games_class")):
+                timestamp_colored = "<light-magenta>{time:YYYY-MM-DD HH:mm:ss}</light-magenta>"
             else:
-                # App code - use default terminal color for all levels
-                module_colored = module
+                # App code - use default terminal color
+                timestamp_colored = "{time:YYYY-MM-DD HH:mm:ss}"
 
             # Level colors (works on both light and dark terminals)
             # Using darker variants (standard yellow/red) instead of light- variants
@@ -185,10 +189,9 @@ class LoggingConfig:
                 else:
                     level_formatted = "{level: <8}"
 
-            # Build format string - message uses default color (adapts to terminal)
+            # Build format string - cleaner without module name
             return (
-                "{time:YYYY-MM-DD HH:mm:ss} | "
-                f"{module_colored} | "
+                f"{timestamp_colored} | "
                 f"{level_formatted} | "
                 "{message}\n"
             )
