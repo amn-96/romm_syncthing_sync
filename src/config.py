@@ -146,12 +146,60 @@ class LoggingConfig:
         # Remove default handler
         logger.remove()
 
+        # Custom format function for colored module names
+        def format_record(record):
+            module = record.get("extra", {}).get("stdlib_name", record["name"])
+            level_name = record["level"].name
+
+            # Color code based on module
+            if module.startswith("watchdog"):
+                module_colored = f"<light-blue>{module}</light-blue>"  # Distinct from level colors
+            elif module.startswith(("requests", "urllib3", "src.romm_api_func", "romm_api_func")):
+                module_colored = f"<magenta>{module}</magenta>"
+            else:
+                # App code - use default terminal color for all levels
+                module_colored = module
+
+            # Level colors (works on both light and dark terminals)
+            # Using darker variants (standard yellow/red) instead of light- variants
+            level_colors = {
+                "TRACE": "dim",
+                "DEBUG": "blue",
+                "INFO": "",  # Default text color
+                "SUCCESS": "green",
+                "WARNING": "yellow",  # [33m - darker than light-yellow, better on light terminals
+                "ERROR": "red",  # [31m - darker than light-red, better on light terminals
+                "CRITICAL": "red"
+            }
+            level_color = level_colors.get(level_name, "")
+
+            # Apply bold to CRITICAL separately
+            if level_name == "CRITICAL":
+                if level_color:
+                    level_formatted = f"<bold><{level_color}>{{level: <8}}</{level_color}></bold>"
+                else:
+                    level_formatted = "<bold>{level: <8}</bold>"
+            else:
+                if level_color:
+                    level_formatted = f"<{level_color}>{{level: <8}}</{level_color}>"
+                else:
+                    level_formatted = "{level: <8}"
+
+            # Build format string - message uses default color (adapts to terminal)
+            return (
+                "{time:YYYY-MM-DD HH:mm:ss} | "
+                f"{module_colored} | "
+                f"{level_formatted} | "
+                "{message}\n"
+            )
+
         # Add custom handler with our format and filter
         logger.add(
             sys.stderr,
-            format="{time:YYYY-MM-DD HH:mm:ss}: {message}",
+            format=format_record,
             level=log_level if log_level != "TRACE" else 5,
-            filter=cls._get_filter_func(log_level)
+            filter=cls._get_filter_func(log_level),
+            colorize=True
         )
 
         # Intercept stdlib logging (for watchdog, requests, urllib3)
