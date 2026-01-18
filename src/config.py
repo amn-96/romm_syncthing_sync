@@ -1,12 +1,11 @@
 """Configuration management using environment variables."""
-from dotenv import load_dotenv
-load_dotenv()
-
 import os
 import logging
 from pathlib import Path
 from typing import Optional
 from .romm_api_func import RommUser
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class Config:

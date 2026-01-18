@@ -9,6 +9,7 @@ exclude =
     *.egg-info,
     dist,
     build,
-    .eggs
+    .eggs,
+    src/experimental/*
 max-line-length = 256
 max-complexity = 10

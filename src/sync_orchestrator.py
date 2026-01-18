@@ -61,7 +61,7 @@ class SyncOrchestrator:
         """
         for game in games:
             if game.is_matched:
-                logger.debug(f"Fetching ROMM data for {game}")
+                logger.debug(f"Fetching ROMM data for {game.name}")
                 try:
                     game.fetch_romm_saves()
                     game.fetch_romm_states()
@@ -84,7 +84,7 @@ class SyncOrchestrator:
 
         for game in games:
             if game.is_matched:
-                logger.debug(f"Pushing local save data for {game} to ROMM.")
+                logger.debug(f"Pushing local save data for {game.name} to ROMM.")
                 try:
                     game.sync_local_saves_to_remote()
                     game.sync_local_states_to_remote()
@@ -174,7 +174,6 @@ class SyncOrchestrator:
         2. Rescans those games for updated files
         3. Fetches their current ROMM state
         4. Pushes local changes to ROMM
-        5. Caches the updated state
         """
         logger.info("---------- Starting watchdog sync ----------")
         result = SyncResult()
