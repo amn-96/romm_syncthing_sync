@@ -5,15 +5,13 @@ Includes orchestration logic, sync state management, and file system event handl
 from dataclasses import dataclass, field
 from typing import List, Optional
 from pathlib import Path
-import logging
+from loguru import logger
 import threading
 
 from .games_class import Game
 from .library_classes import LocalLibrary, RetroGameServer
 from .romm_api_func import RommUser
 from watchdog.events import FileSystemEventHandler
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass

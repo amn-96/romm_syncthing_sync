@@ -8,16 +8,13 @@ import threading
 from dotenv import load_dotenv
 # logging special import
 from src.config import LoggingConfig, TRACE
-import logging
+from loguru import logger
 # internal imports
 from src.romm_sync import initialize_romm_sync, full_sync, cleanup
 from src.sync_orchestrator import SyncManager, FileChangeHandler
 
 # Load environment variables early
 load_dotenv()
-
-
-logger = logging.getLogger(__name__)
 
 
 def run_periodic_sync(app_cfg):

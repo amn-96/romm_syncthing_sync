@@ -4,14 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
-import logging
+from loguru import logger
 from collections import namedtuple
 
 # Imports - app
 from .romm_api_func import RommSaves, RommStates
 from .config import get_config
-
-logger = logging.getLogger(__name__)
 
 
 LocalRemoteMatch = namedtuple('LocalRemoteMatch', ['local', 'romm', 'api_ops'])
