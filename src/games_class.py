@@ -188,7 +188,7 @@ class Game:
         if len(matched):
             # now check modification time to see if sync is needed
             m = matched[0]
-            logger.debug(f"Checking...{self.name} - {m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
+            logger.debug(f"Checking...{m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
             if m.local.modified_at > m.romm.modified_at:
                 logger.debug(f"Updating save data in ROMM: {m.local.path.name}")
                 m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, id=m.romm.id)
@@ -198,7 +198,7 @@ class Game:
                 logger.debug(f"Multiple files on ROMM? {matched}")
 
         else:  # local present but not in romm --> add
-            logger.debug(f"ADDING SAVE to ROMM: {savedata.path.name}")
+            logger.debug(f"ADDING SAVE DATA to ROMM: {savedata.path.name}")
             api_ops.add(local_filepath=savedata.path, rom_id=self.romm_id)
 
     def sync_local_saves_to_remote(self):
