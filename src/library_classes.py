@@ -363,12 +363,12 @@ class LocalLibrary:
 
             # Add to games dict
             self.games[game_name] = new_game
-            logger.info(f"[WATCHDOG] Added new game to library: {game_name}")
+            logger.info(f"[WATCHDOGSYNC] Added new game to library: {game_name}")
 
             return new_game
 
         except Exception as e:
-            logger.error(f"[WATCHDOG] Error adding new game from file change event: {e}")
+            logger.error(f"[WATCHDOGSYNC] Error adding new game from file change event: {e}")
             return None
 
     @staticmethod
@@ -377,13 +377,13 @@ class LocalLibrary:
         event = event_path.name
         filter_list = ["syncthing", "conflict", "~"]  # reliably forbidden characters
         if not any([forbidden in event for forbidden in filter_list]):
-            logger.debug(f"[WATCHDOG] Found modified savedata: {event}.")
+            logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
             return str(event).split(".")[0]  # game name will be everything before the FIRST extension
         else:
             return None
 
     def extract_games_from_watchdog_events(self,
-                                           event_paths: List[str],
+                                           event_paths: List[Path],
                                            romm_library: RetroGameServer) -> List[Game]:
         """Parse watchdog filesystem events and identify affected games for syncing.
 
@@ -403,11 +403,11 @@ class LocalLibrary:
         # Pre-filter captured events for the relevant file changes.
         # If we don't do this, every chunk that syncthing pushes will get processed. The sync is robust enough to reject these, but it clutters the logs.
         for event_path in event_paths:
-            game_name = self._detect_game_from_watchdog_event(Path(event_path))
+            game_name = self._detect_game_from_watchdog_event(event_path)
             if game_name is not None:
                 if game_name not in game_changed_files:
                     game_changed_files[game_name] = set()
-                game_changed_files[game_name].add(Path(event_path))
+                game_changed_files[game_name].add(event_path)
 
         affected_games_dict = {}  # game_name -> Game object
 
@@ -415,14 +415,14 @@ class LocalLibrary:
             # Find or create the game
             matching_Game = self.get_game_by_name(game_name)
             if not matching_Game:
-                logger.info(f"[WATCHDOG] New game detected: {game_name}")
+                logger.info(f"[WATCHDOGSYNC] New game detected: {game_name}")
                 # Use one of the changed files to add a game. It will be named the same as the ROM by save file/state convention
                 matching_Game = self._add_new_game_from_watchdog_event(next(iter(changed_files)), romm_library)
                 if matching_Game is None:
-                    logger.warning(f"[WATCHDOG] Failed to add new game: {game_name}")
+                    logger.warning(f"[WATCHDOGSYNC] Failed to add new game: {game_name}")
                     continue
             else:
-                logger.info(f"[WATCHDOG] {game_name} has {len(changed_files)} files to be synced.")
+                logger.info(f"[WATCHDOGSYNC] {game_name} has {len(changed_files)} files to be synced.")
 
             # Rescan the game's directory to pick up any new/updated save files.
             self._rescan_local_saves_and_states(matching_Game)

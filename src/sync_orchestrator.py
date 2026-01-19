@@ -7,11 +7,15 @@ from typing import List, Optional
 from pathlib import Path
 from loguru import logger
 import threading
+from collections import namedtuple
 
 from .games_class import Game
 from .library_classes import LocalLibrary, RetroGameServer
 from .romm_api_func import RommUser
 from watchdog.events import FileSystemEventHandler
+
+
+ValidEvent = namedtuple("ValidEvent", ['path', 'type'])
 
 
 @dataclass
@@ -161,7 +165,7 @@ class SyncOrchestrator:
             logger.error(f"[FULLSYNC] Failed! {e}", exc_info=True)
             return result
 
-    def watchdog_sync(self, event_paths: List[str], cache_filepath: Optional[Path] = None) -> SyncResult:
+    def watchdog_sync(self, event_paths: List[Path], event_types: List[str], cache_filepath: Optional[Path] = None) -> SyncResult:
         """Perform an incremental sync of all file changes gathered by the watchdog.
 
         This sync operation:
@@ -179,6 +183,10 @@ class SyncOrchestrator:
                 result.success = True
                 return result
 
+            logger.debug("[WATCHDOGSYNC] The following file events will be processed in this sync operation:")
+            for p, t in zip(event_paths, event_types):
+                logger.debug(f"[WATCHDOGSYNC] --- File: {p}, Type: {t}")
+            
             # Step 1: Extract affected games from watchdog events
             logger.info(f"[WATCHDOGSYNC] Processing {len(event_paths)} file change events...")
             games_to_sync = self.local_library.extract_games_from_watchdog_events(
@@ -237,7 +245,7 @@ class SyncManager:
         self.orchestrator = SyncOrchestrator(lcl, srv, romm_user)
         self.cache_filepath = cache_filepath
         self.watchdog_delay_seconds = watchdog_delay_seconds
-        self.pending_events = []
+        self.pending_events: List[ValidEvent] = []
         self.event_lock = threading.Lock()
         self.timer_thread = None
         self.timer_lock = threading.Lock()
@@ -263,10 +271,10 @@ class SyncManager:
             self.timer_thread.daemon = False
             self.timer_thread.start()
 
-    def add_event(self, event_path: str):
+    def add_event(self, event_path: str, event_type: str):
         """Add a filesystem event to the pending queue."""
         with self.event_lock:
-            self.pending_events.append(event_path)
+            self.pending_events.append(ValidEvent(path=event_path, type=event_type))
 
     def execute_sync(self):
         """Execute the sync operation for pending events."""
@@ -279,11 +287,12 @@ class SyncManager:
                     logger.debug("No pending events to process")
                     return
 
-                event_paths = self.pending_events.copy()
+                event_paths = [Path(p_e.path) for p_e in self.pending_events]
+                event_types = [p_e.type for p_e in self.pending_events]
                 self.pending_events.clear()
 
             # Use orchestrator to handle watchdog sync
-            result = self.orchestrator.watchdog_sync(event_paths, self.cache_filepath)
+            result = self.orchestrator.watchdog_sync(event_paths, event_types, self.cache_filepath)
 
             if result.success:
                 logger.info(f"Watchdog sync succeeded: {len(result.games_synced)} games synced")
@@ -315,7 +324,7 @@ class FileChangeHandler(FileSystemEventHandler):
         """Common handler for all filesystem events."""
         if not event.is_directory:
             logger.trace(f"Filesystem Event: {event.event_type} - {event.src_path}")
-            self.sync_manager.add_event(event.src_path)
+            self.sync_manager.add_event(event.src_path, event.event_type)
             self.sync_manager.schedule_sync()
 
     def on_modified(self, event):
