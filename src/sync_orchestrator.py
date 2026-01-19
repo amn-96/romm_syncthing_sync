@@ -12,6 +12,7 @@ from collections import namedtuple
 from .games_class import Game
 from .library_classes import LocalLibrary, RetroGameServer
 from .romm_api_func import RommUser
+from .config import METADATA_FILE_FILTERS
 from watchdog.events import FileSystemEventHandler
 
 
@@ -323,6 +324,12 @@ class FileChangeHandler(FileSystemEventHandler):
     def _handle_event(self, event):
         """Common handler for all filesystem events."""
         if not event.is_directory:
+            event_path = Path(event.src_path)
+            # Filter out any metadata files
+            if any(filter_str in event_path.name for filter_str in METADATA_FILE_FILTERS):
+                logger.trace(f"Ignored file system event (METADATA): {event.event_type} - {event.src_path}")
+                return
+
             logger.trace(f"Filesystem Event: {event.event_type} - {event.src_path}")
             self.sync_manager.add_event(event.src_path, event.event_type)
             self.sync_manager.schedule_sync()

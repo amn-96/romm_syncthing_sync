@@ -2,7 +2,7 @@
 In general, these are one step abstracted over Game, so they operate on groups of Game at once."""
 from pathlib import Path
 from typing import List, Dict, Optional
-import pandas as pd
+import polars as pl
 from loguru import logger
 import re
 
@@ -14,7 +14,7 @@ from .config import METADATA_FILE_FILTERS
 
 class RetroGameServer:
     def __init__(self, library):
-        self.library: pd.DataFrame = library
+        self.library: pl.DataFrame = library
 
     @classmethod
     def initialize_romm_map(cls,
@@ -28,8 +28,14 @@ class RetroGameServer:
         """
         data = romm_user.get_full_library()
 
+        # Strip metadata fields before normalization to reduce memory footprint
+        unwanted_fields = ['metadatum', 'igdb_metadata', 'hasheous_metadata', 'moby_metadata']
+        for item in data['items']:
+            for field in unwanted_fields:
+                item.pop(field, None)
+
         # represent the library as a dataframe for ease of use
-        library = pd.json_normalize(data['items'])
+        library = pl.from_dicts(data['items'])
 
         # Keep only columns we actually use to reduce memory footprint
         # Core columns needed for matching and display
@@ -40,11 +46,13 @@ class RetroGameServer:
 
         # Filter to only essential columns that exist in the dataframe
         available_columns = [col for col in essential_columns if col in library.columns]
-        library = library[available_columns]
+        library = library.select(available_columns)
 
-        # Each game stores its non-unique platform slug, so let pandas optimize with category dtype
+        # Each game stores its non-unique platform slug, so use categorical dtype
         # avoids repeating the same string for every game on a given platform...might make a difference for big libraries
-        library['platform_slug'] = library['platform_slug'].astype('category')
+        library = library.with_columns(
+            pl.col('platform_slug').cast(pl.Categorical)
+        )
 
         return cls(library=library)
 
@@ -55,7 +63,7 @@ class RetroGameServer:
         return round(self.library['fs_size_bytes'].sum() / 1e9, 2)
 
     def __repr__(self):
-        platform_count = self.library['platform_slug'].nunique()
+        platform_count = self.library['platform_slug'].n_unique()
         return (f"RetroGameServer(games={self.count()}, "
                 f"size_gb={self.size_gb()}, "
                 f"platforms={platform_count})")
@@ -63,8 +71,12 @@ class RetroGameServer:
     def summary(self, verbose=True):
         print(f"Games: {self.count()}, Library Size: {self.size_gb()} GB")
         print()
-        platforms = self.library.groupby('platform_slug')['name'].apply(list)
-        for idx, (platform, games) in enumerate(platforms.items()):
+        platforms = self.library.group_by('platform_slug').agg(
+            pl.col('name').alias('games')
+        )
+        for idx, row in enumerate(platforms.iter_rows(named=True)):
+            platform = row['platform_slug']
+            games = row['games']
             print(f"┌─ {platform}: {len(games)} game(s)")
             if verbose:
                 for game in games:
@@ -207,20 +219,26 @@ class LocalLibrary:
         for game in games:
             # Narrow search to platform if available
             if game.platform:
-                platform_games = romm_library.library[romm_library.library['platform_slug'] == game.platform]
+                platform_games = romm_library.library.filter(
+                    pl.col('platform_slug') == game.platform
+                )
                 # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
                 # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
                 # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
                 # romm_library.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
                 #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
-                matching_rows = platform_games[platform_games['fs_name'].str.contains(game.name, na=False, regex=False)]
+                matching_rows = platform_games.filter(
+                    pl.col('fs_name').str.contains(game.name, literal=True)
+                )
             else:
                 # Fallback to searching all games if platform not available
-                matching_rows = romm_library.library[romm_library.library['name'] == game.name]
+                matching_rows = romm_library.library.filter(
+                    pl.col('name') == game.name
+                )
 
-            if not matching_rows.empty:
+            if matching_rows.height > 0:
                 # Convert DataFrame row to dictionary and populate ROMM data
-                romm_row = matching_rows.iloc[0].to_dict()
+                romm_row = matching_rows.row(0, named=True)
                 game.set_romm_data(romm_row)
             else:
                 # Game not found in ROMM library
@@ -377,13 +395,13 @@ class LocalLibrary:
 
     @staticmethod
     def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
-        """Watchdog can catch a lot of temporary syncthing files or conflicts. This function filters that out."""
+        """Extract game name from watchdog event path.
+
+        Note: Metadata files are already filtered by FileChangeHandler, so this receives only valid game files.
+        """
         event = event_path.name
-        if not any(forbidden in event for forbidden in METADATA_FILE_FILTERS):
-            logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
-            return str(event).split(".")[0]  # game name will be everything before the FIRST extension
-        else:
-            return None
+        logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
+        return str(event).split(".")[0]  # game name will be everything before the FIRST extension
 
     def extract_games_from_watchdog_events(self,
                                            event_paths: List[Path],
