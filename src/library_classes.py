@@ -13,12 +13,8 @@ from .config import METADATA_FILE_FILTERS
 
 
 class RetroGameServer:
-    def __init__(self, raw_database, library, by_id, by_platform, games):
-        self.raw_database: dict = raw_database
+    def __init__(self, library):
         self.library: pd.DataFrame = library
-        self.by_id: dict = by_id
-        self.by_platform: dict = by_platform
-        self.games: list = games
 
     @classmethod
     def initialize_romm_map(cls,
@@ -35,29 +31,40 @@ class RetroGameServer:
         # represent the library as a dataframe for ease of use
         library = pd.json_normalize(data['items'])
 
-        # build a map of ROM ID : ROM NAME
-        id_map = dict(zip(library['id'], library['name']))
-        platform_map = library.groupby('platform_slug')['name'].apply(list).to_dict()
-        games_list = library['name'].tolist()
+        # Keep only columns we actually use to reduce memory footprint
+        # Core columns needed for matching and display
+        essential_columns = [
+            'id', 'name', 'platform_slug', 'platform_id',
+            'fs_name', 'fs_size_bytes', 'platform_display_name'
+        ]
 
-        return cls(raw_database=data, library=library, by_id=id_map, by_platform=platform_map, games=games_list)
+        # Filter to only essential columns that exist in the dataframe
+        available_columns = [col for col in essential_columns if col in library.columns]
+        library = library[available_columns]
+
+        # Each game stores its non-unique platform slug, so let pandas optimize with category dtype
+        # avoids repeating the same string for every game on a given platform...might make a difference for big libraries
+        library['platform_slug'] = library['platform_slug'].astype('category')
+
+        return cls(library=library)
 
     def count(self):
-        return len(self.games)
+        return len(self.library)
 
     def size_gb(self):
         return round(self.library['fs_size_bytes'].sum() / 1e9, 2)
 
     def __repr__(self):
+        platform_count = self.library['platform_slug'].nunique()
         return (f"RetroGameServer(games={self.count()}, "
                 f"size_gb={self.size_gb()}, "
-                f"platforms={len(self.by_platform)})")
+                f"platforms={platform_count})")
 
     def summary(self, verbose=True):
         print(f"Games: {self.count()}, Library Size: {self.size_gb()} GB")
         print()
-        platforms = list(self.by_platform.items())
-        for idx, (platform, games) in enumerate(platforms):
+        platforms = self.library.groupby('platform_slug')['name'].apply(list)
+        for idx, (platform, games) in enumerate(platforms.items()):
             print(f"┌─ {platform}: {len(games)} game(s)")
             if verbose:
                 for game in games:

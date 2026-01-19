@@ -15,7 +15,7 @@ from .config import get_config
 LocalRemoteMatch = namedtuple('LocalRemoteMatch', ['local', 'romm', 'api_ops'])
 
 
-@dataclass
+@dataclass(slots=True)
 class SaveState:
     """Representation of a single save state for a game. Applies to both local and romm data."""
     path: Path
@@ -24,27 +24,17 @@ class SaveState:
     modified_at: datetime
     slot: int
     in_sync: bool = False  # initialize with False so it has to be checked
-    romm_api: RommStates = field(default=None)
     id: int | None = None  # will only be populated if the romm save exists
 
-    def __post_init__(self):  # gets its own reference to the api function for nice syntax
-        if self.romm_api is None:
-            self.romm_api = get_config().ROMM_CREDENTIALS.states
 
-
-@dataclass
+@dataclass(slots=True)
 class SaveFile:
     """Representation of a single save file for a game. Applies to both local and romm data."""
     path: Path
     platform_id: int
     modified_at: datetime
     in_sync: bool = False  # initialize with False so it has to be checked
-    romm_api: RommSaves = field(default=None)
     id: int | None = None
-
-    def __post_init__(self):  # gets its own reference to the api function for nice syntax
-        if self.romm_api is None:
-            self.romm_api = get_config().ROMM_CREDENTIALS.saves
 
 
 @dataclass
@@ -53,7 +43,7 @@ class Game:
 
     Fields can be populated from either/both sources:
     - Local scan: name, platform, local_save_files, local_last_modified
-    - ROMM library: romm_id, romm_name, romm_platform, romm_fs_size_bytes, romm_data
+    - ROMM library: romm_id, romm_name, romm_platform, romm_fs_size_bytes
     """
 
     name: str  # Game name (from folder/filename)
@@ -73,7 +63,6 @@ class Game:
     romm_platform: Optional[str] = None  # Platform from ROMM (may differ if matched) -- informational
     romm_platform_id: Optional[str] = None  # Platform ID (int) from ROMM -- used for api lookups.
     romm_fs_size: Optional[float] = None  # File size in MB from ROMM
-    romm_data: Optional[Dict] = None  # Full raw data from ROMM API for reference
 
     # Match quality indicators
     is_matched: bool = False  # Whether this game was successfully matched to ROMM
@@ -118,7 +107,6 @@ class Game:
         self.romm_platform = romm_row.get('platform_slug')
         self.romm_platform_id = romm_row.get('platform_id')
         self.romm_fs_size = float(romm_row.get('fs_size_bytes')) / 2**20  # in MB
-        self.romm_data = romm_row  # Store full row for reference
         self.is_matched = True
 
     def fetch_romm_saves(self):
@@ -191,7 +179,7 @@ class Game:
             logger.debug(f"Checking...{m.local.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
             if m.local.modified_at > m.romm.modified_at:
                 logger.debug(f"Updating save data in ROMM: {m.local.path.name}")
-                m.local.romm_api.update(local_filepath=m.local.path, rom_id=self.romm_id, id=m.romm.id)
+                api_ops.update(local_filepath=m.local.path, rom_id=self.romm_id, id=m.romm.id)
             else:
                 logger.debug("----ROMM is up to date.")
             if len(matched) > 1:
