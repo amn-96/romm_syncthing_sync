@@ -7,7 +7,6 @@ from time import perf_counter as tpc
 import threading
 from dotenv import load_dotenv
 # logging special import
-from src.config import LoggingConfig, TRACE
 from loguru import logger
 # internal imports
 from src.romm_sync import initialize_romm_sync, full_sync, cleanup

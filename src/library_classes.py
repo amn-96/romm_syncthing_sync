@@ -9,6 +9,7 @@ import re
 # program imports
 from .games_class import Game
 from .romm_api_func import RommUser
+from .config import METADATA_FILE_FILTERS
 
 
 class RetroGameServer:
@@ -98,19 +99,15 @@ class LocalLibrary:
         """Discover and filter all game files in a platform directory.
 
         Iterates through files in the platform directory and returns a list of valid game files,
-        excluding metadata files (sync-conflict, .stignore, .stfolder, ._, .DS_Store).
+        excluding metadata files and directories defined in METADATA_FILE_FILTERS.
         """
         files = []
 
         for file_path in platform_dir.iterdir():
             if not file_path.is_file():
                 continue
-            # Skip various metadata files
-            if "sync-conflict" in file_path.name:
-                continue
-            if ".stignore" in file_path.name or ".stfolder" in file_path.name:
-                continue
-            if "._" in file_path.name or ".DS_Store" in file_path.name:
+            # Skip various metadata files and directories
+            if any(filter_str in file_path.name for filter_str in METADATA_FILE_FILTERS):
                 continue
             files.append(file_path)
 
@@ -375,8 +372,7 @@ class LocalLibrary:
     def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
         """Watchdog can catch a lot of temporary syncthing files or conflicts. This function filters that out."""
         event = event_path.name
-        filter_list = ["syncthing", "conflict", "~"]  # reliably forbidden characters
-        if not any([forbidden in event for forbidden in filter_list]):
+        if not any(forbidden in event for forbidden in METADATA_FILE_FILTERS):
             logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
             return str(event).split(".")[0]  # game name will be everything before the FIRST extension
         else:

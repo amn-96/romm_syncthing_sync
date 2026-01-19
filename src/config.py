@@ -10,6 +10,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# File filtering constants
+METADATA_FILE_FILTERS = [
+    "sync-conflict",
+    "syncthing",
+    ".stfolder",
+    ".stversions",
+    ".stignore",
+    ".DS_Store",
+    "._",
+    "~",
+]
+
+
 class Config:
     """Application configuration from environment variables with sensible defaults.
 
@@ -243,7 +256,3 @@ class LoggingConfig:
         cls._initialized = True
 
         return logger
-
-
-# Export TRACE constant for convenience (loguru has TRACE=5 built-in)
-TRACE = 5
