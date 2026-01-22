@@ -9,7 +9,7 @@ import re
 # program imports
 from .games_class import Game
 from .romm_api_func import RommUser
-from .config import METADATA_FILE_FILTERS
+from .config import METADATA_FILE_FILTERS, get_config
 
 
 class RetroGameServer:
@@ -90,8 +90,8 @@ class RetroGameServer:
 class LocalLibrary:
     """Catalog of games from local sync folder, matched to RetroGameServer library."""
 
-    def __init__(self, sync_folder: Path):
-        self.sync_folder = sync_folder
+    def __init__(self, sync_folders: List[Path]):
+        self.sync_folders: List[Path] = sync_folders
         self.games: Dict[str, Game] = {}
 
     # # Initialize from a previously-built JSON file to save time.
@@ -174,6 +174,7 @@ class LocalLibrary:
         # Initialize game entry if not seen before
         if game_name not in games_dict:
             games_dict[game_name] = {
+                'path': file_path,
                 'platform': platform_name,
                 'saves': [],
                 'states': [],
@@ -231,10 +232,12 @@ class LocalLibrary:
                     pl.col('fs_name').str.contains(game.name, literal=True)
                 )
             else:
-                # Fallback to searching all games if platform not available
-                matching_rows = romm_library.library.filter(
-                    pl.col('name') == game.name
-                )
+                if get_config().ALLOW_SKIP_PLATFORM_VERIFICATION:
+                    # Fallback to searching all games if platform not available
+                    matching_rows = romm_library.library.filter(
+                        pl.col('fs_name') == game.name)
+                else:
+                    logger.warning(f"Could not match {game.name} with platform '{game.platform}' to ROMM server. Check PLATFORM_MAPPING environment variable.")
 
             if matching_rows.height > 0:
                 # Convert DataFrame row to dictionary and populate ROMM data
@@ -263,7 +266,7 @@ class LocalLibrary:
         game.local_state_files = []
 
         # Rescan platform directory and repopulate
-        platform_dir = self.sync_folder / game.platform
+        platform_dir = game.path.parent
         files = self._collect_games(platform_dir)
         games_dict = self._build_games_dict(files, game.platform)
 
@@ -273,45 +276,34 @@ class LocalLibrary:
 
     def build_local_library(self) -> dict:
         """Scan local (syncthing or otherwise) folder and build local game catalog. Public class method.
-
-        Expected directory structure:
-            sync_folder/
-            ├── Game Boy Advance/
-            │   ├── Pokemon Fire Red.srm
-            │   ├── Pokemon Fire Red.state
-            │   ├── Pokemon Fire Red.state.png
-            │   └── Zelda Minish Cap.srm
-            └── NES/
-                ├── Super Mario Bros.sav
-                └── Donkey Kong.sav
-
-        Aggregates all save files and state files for each game
-        into a single Game object that is then matched to a romm server-side entry. Game name is derived from base filename.
+        Aggregates all save files and state files for each game into a single Game object that is then matched to a romm server-side entry. 
+        Game name is derived from base filename. Assumes that ROM's in ROMM are the same as that of the savefiles in the local library.
         """
 
-        # Iterate through platform directories
-        for platform_dir in self.sync_folder.iterdir():
-            if not platform_dir.is_dir():
-                continue
+        # Iterate through platform directories within each sync_folder
+        for sync_dir in self.sync_folders:
+            for platform_dir in sync_dir.iterdir():
+                if not platform_dir.is_dir():
+                    continue
 
-            platform_name = platform_dir.name
+                platform_name = platform_dir.name
 
-            # Discover and filter all game files in this platform directory
-            files = self._collect_games(platform_dir)
+                # Discover and filter all game files in this platform directory
+                files = self._collect_games(platform_dir)
 
-            # Build games dictionary from files
-            games_dict = self._build_games_dict(files, platform_name)
+                # Build games dictionary from files
+                games_dict = self._build_games_dict(files, platform_name)
 
-            # Create Game objects for all games in this platform
-            games = []
-            for game_name, file_info in games_dict.items():
-                logger.debug(f"Processing game: {game_name} ({len(file_info['saves'])} saves, {len(file_info['states'])} states)")
-                new_game = Game(name=game_name, platform=file_info['platform'])
-                self._load_local_saves_and_states(new_game=new_game, file_info=file_info)
-                games.append(new_game)
-                # Add to games dict
-                self.games[game_name] = new_game
-                logger.debug(f"  Added {game_name} to library")
+                # Create Game objects for all games in this platform
+                games = []
+                for game_name, file_info in games_dict.items():
+                    logger.debug(f"Processing game: {game_name} ({len(file_info['saves'])} saves, {len(file_info['states'])} states)")
+                    new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])
+                    self._load_local_saves_and_states(new_game=new_game, file_info=file_info)
+                    games.append(new_game)
+                    # Add to games dict
+                    self.games[game_name] = new_game
+                    logger.debug(f"  Added {game_name} to library")
 
         return games_dict
     # endregion
@@ -341,7 +333,7 @@ class LocalLibrary:
             logger.debug(f"With local saves: {with_saves}")
             logger.debug(f"Unmatched: {total - matched}.")
         else:
-            logger.warning(f"No saves or states were found in {self.sync_folder}.")
+            logger.warning(f"No saves or states were found in {", ".join([str(sf) for sf in self.sync_folders])}.")
 
     # def _to_dict(self) -> list:
     #     """Serialize entire catalog to list of dictionaries for caching."""

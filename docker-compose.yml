@@ -7,5 +7,8 @@ services:
     restart: unless-stopped
     env_file: .env.example
     volumes:
-      - ${SYNC_FOLDER}:/syncdata:ro  # bind mounts the local library
+    # do NOT change the target bind mounts. Specify the directories that are relevant to you.
+      # - ${ALL_SYNC_FOLDER}:/syncdata:ro  # Uncomment if saves and states in the same folder.
+      - ${SAVE_SYNC_FOLDER}:/syncdata/saves:ro
+      - ${STATE_SYNC_FOLDER}:/syncdata/states:ro
       - ./data:/appdata

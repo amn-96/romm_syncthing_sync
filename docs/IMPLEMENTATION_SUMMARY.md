@@ -1,311 +1,223 @@
-# Docker-Friendly Event Loop Implementation Summary
+*(This document was initially AI-generated, then proofread and corrected by me)*
+# romm_sync Architecture & Implementation Summary
 
-## What Was Created
+## Overview
 
-### 1. **`src/main_loop.py`** - Main Event Loop (New File)
-The core of the Docker-friendly continuous sync system.
+romm_sync is a Python daemon that synchronizes RetroArch save files and save states between local storage and a ROMM (Retro ROM Manager) server. It supports two sync modes: **periodic** (runs full sync at intervals) and **watch** (monitors filesystem for changes and syncs incrementally).
 
-**Key Classes:**
-- `SyncStatistics` - Tracks sync operation metrics
-- `RommSyncScheduler` - Orchestrates the sync lifecycle
+## Docker Environment
 
-**Key Features:**
-- ✅ Graceful shutdown handling (SIGTERM/SIGINT signals)
-- ✅ Async/await architecture for non-blocking operations
-- ✅ Periodic sync mode (runs on fixed intervals)
-- ✅ Watch mode stub (architecture ready, not implemented)
-- ✅ Comprehensive logging
-- ✅ Error handling and retry logic
+The application runs in a Docker container with the following configuration:
 
-**Usage:**
-```python
-from src.main_loop import main
-import asyncio
+**Environment Variables** (`.env.example`):
+- ROMM API credentials and configuration
+- Sync mode selection (periodic vs watch)
+- Directory configuration for saves/states
+- Timing parameters (sync interval, watchdog delay)
+- Platform verification settings
+- Logging configuration
 
-# Run from code
-exit_code = asyncio.run(main(config=None, mode="periodic"))
+**Volume Mounts** (`docker-compose.yml`):
+The container mount path is hard-coded and it is expected that the user define their host mounts via `.env.example`. See the [relevant section in the README](../README.md###sync-configuration)
+- `/syncdata/saves` - Bind mount for save files (`.srm`, `.sav`, etc.)
+- `/syncdata/states` - Bind mount for state files (`.state`, `.state0`, `.state.png`, etc.)
+- `/appdata` - Application data directory for cache and logs
 
-# Or via CLI
-python -m src.main_loop
-```
+**Alternative Configuration**: Can use `/syncdata` as a single mount point when saves and states share the same directory structure (e.g., Knulli devices).
 
-### 2. **`.env.example`** - Configuration Template (New File)
-Complete documentation of all configuration options with descriptions.
+## Code Flow Architecture
 
-**Includes:**
-- ROMM connection settings
-- Sync behavior configuration
-- Logging options
-- Docker-specific settings
-- Detailed comments for each setting
+### Entry Point: main.py
 
-**Usage:**
-```bash
-cp .env.example .env
-# Edit .env with your settings
-docker run --env-file .env romm-sync:latest
-```
+The application starts in `main.py` and follows this initialization sequence:
 
-### 3. **`DOCKER_USAGE.md`** - Docker Deployment Guide (New File)
-Complete guide for running romm-sync in Docker.
-
-**Covers:**
-- Quick start (Docker run and Docker Compose examples)
-- Configuration explanation
-- How the scheduler works
-- Log output examples
-- Troubleshooting
-- Integration with existing services
-- Future enhancements
-
-### 4. **`Dockerfile.example`** - Docker Image Template (New File)
-Example Dockerfile for building the Docker image.
-
-**Includes:**
-- Python 3.12 slim base image
-- Volume mount points
-- Default environment variables
-- Build and run instructions
-
-### 5. **Comments Added to Existing Code** (Modified Files)
-Strategic comments marking future optimizations and TODOs:
-
-**`src/romm_api_func.py`**
-- Added notes about LibraryCache optimization for `get_full_library()`
-
-**`src/sync_operations.py`**
-- Added LocalStateTracker notes to `match_to_romm()`
-- Added SyncStrategy pattern notes to `sync_all_states()`
-
-**`src/library_classes.py`**
-- Added TODO comments to `send_romm_saves()` and `send_romm_states()`
-- Added FUTURE notes to `needs_romm_sync()`
-- Fixed attribute name: `romm_fs_size_bytes` → `romm_fs_size`
-- Added missing `romm_fs_size` field to Game dataclass
-
-**`src/config.py`**
-- Added reference to main_loop.py and .env.example
-
-## Architecture Overview
+1. **Load environment variables** - Uses `dotenv` to load `.env` configuration
+2. **Initialize sync system** - Calls `initialize_romm_sync()` from `romm_sync.py`
+3. **Route to sync mode** - Dispatches to either `run_periodic_sync()` or `run_watch_sync()` based on `SYNC_MODE`
 
 ```
-┌─────────────────────────────────────────────────────┐
-│            Docker Container                         │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  .env (environment variables)                      │
-│     │                                               │
-│     ▼                                               │
-│  src/config.py (Config class)                      │
-│     │                                               │
-│     ▼                                               │
-│  src/main_loop.py (RommSyncScheduler)              │
-│     │                                               │
-│     ├─► initialize()                               │
-│     │   ├─ Validate config                         │
-│     │   ├─ Connect to ROMM                         │
-│     │   ├─ Load ROMM library                       │
-│     │   └─ Scan local folder                       │
-│     │                                               │
-│     ├─► run_periodic_sync()                        │
-│     │   └─ Loop every SYNC_INTERVAL_SECONDS:       │
-│     │      ├─ Refresh ROMM library (cached)        │
-│     │      ├─ Scan local folder                    │
-│     │      ├─ Match to ROMM                        │
-│     │      └─ Perform sync                         │
-│     │                                               │
-│     └─► shutdown() on SIGTERM/SIGINT               │
-│         ├─ Stop event loop                         │
-│         └─ Cleanup resources                       │
-│                                                     │
-│  Signal Handlers (Graceful shutdown)               │
-│  └─ SIGTERM → stop immediately                     │
-│  └─ SIGINT  → stop immediately                     │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-         ▲                                    ▼
-    ROMM Server                         Local Sync Folder
-    (HTTP API)                          (Mounted volume)
+main()
+  └─> initialize_romm_sync()  [romm_sync.py]
+       ├─> get_config()  [Validate environment, create Config object]
+       ├─> full_sync()   [Initial sync on startup]
+       │    └─> Returns (RetroGameServer, LocalLibrary)
+       └─> Return (app_cfg, srv, lcl)
+
+  └─> run_periodic_sync() OR run_watch_sync()
 ```
 
-## Data Flow
+### Configuration Layer: config.py
 
-### Startup
-1. Load environment variables
-2. Create Config object
-3. Create RommSyncScheduler with signal handlers
-4. Call `initialize()`:
-   - Validate configuration
-   - Create RommUser and connect to ROMM API
-   - Load full ROMM library via `RetroGameServer.initialize_romm_map()`
-   - Create SaveBackup and scan local sync folder
-   - Match local games to ROMM library
-5. Enter main loop
+**Config class** manages all application settings:
+- Parses environment variables with defaults as specified in [.env.example](../.env.example)
+- Validates required configuration
+- Sets up logging via `LoggingConfig` with per-library filtering
+- Creates singleton instance via `get_config()` for global access
 
-### Each Sync Cycle (Periodic Mode)
-1. **Refresh ROMM Library** (cached, only if stale)
-   - Check if `ROMM_LIBRARY_TTL_HOURS` has passed
-   - If fresh, skip; if stale, fetch from API
-2. **Scan Local Folder**
-   - Call `SaveBackup.scan_save_folder()`
-   - Discovers all games in platform directories
-3. **Match to ROMM**
-   - Call `SaveBackup.match_to_romm()`
-   - Uses `fs_name` column for reliable matching
-4. **Sync Matched Games**
-   - Call `SaveBackup.sync_all_states()`
-   - For each matched game with state files:
-     - Stop ROMM container
-     - Call `Game.copy_states_to_romm()`
-     - Start ROMM container
-   - Record statistics
-5. **Sleep**
-   - Wait `SYNC_INTERVAL_SECONDS` before next cycle
+**Key validation**: Enforces that either `(SAVE_SYNC_DIR + STATE_SYNC_DIR)` OR `ALL_SYNC_DIR` is specified, but not both.
 
-### Shutdown
-1. Receive SIGTERM from Docker
-2. Signal handler sets `_running = False`
-3. Scheduler exits loop gracefully
-4. Cleanup in `shutdown()` method
-5. Exit with code 0
+### Initialization: romm_sync.py
 
-## Configuration Management
+**`initialize_romm_sync()`** performs the application bootstrap:
 
-**Environment Variables → Config Object → RommSyncScheduler**
+1. **Get configuration** - `get_config()` returns validated Config singleton
+2. **Perform initial full_sync** - Establishes baseline state
+3. **Return components** - Config, server library, and local library objects
 
+**`full_sync(app_cfg)`** performs complete synchronization:
+
+1. **Initialize ROMM library** - `RetroGameServer.initialize_romm_map()` fetches full game library from ROMM API
+2. **Build local library** - `LocalLibrary(sync_dirs)` scans filesystem for saves/states
+3. **Match games** - Links local files to ROMM entries via platform and filename matching
+4. **Execute sync** - `SyncOrchestrator.full_sync()` performs bidirectional sync
+5. **Return libraries** - Both server and local library objects for reuse
+
+### Library Management: library_classes.py
+
+**RetroGameServer** - Represents ROMM's game library:
+- Fetches full game catalog via `RommUser.get_full_library()` API call
+- Stores as Polars DataFrame with categorical platform slugs for memory efficiency
+- Strips metadata fields (`metadatum`, `igdb_metadata`, etc.) to reduce footprint
+- Keeps only essential columns: `id`, `name`, `platform_slug`, `fs_name`, etc.
+
+**LocalLibrary** - Manages local save/state files:
+- Accepts list of sync directories (supports multiple paths)
+- `build_local_library()` - Scans platform directories for game files
+  - Filters out metadata files (syncthing conflicts, .DS_Store, temp files)
+  - Uses regex matching to categorize: saves (`.srm`), states (`.state*`), screenshots (`.state*.png`)
+  - Aggregates files per game into `Game` objects
+- `match_to_romm()` - Links games to ROMM library entries
+  - Primary matching: filters by platform, then searches `fs_name` for game name
+  - Fallback option: if `ALLOW_SKIP_PLATFORM_VERIFICATION=true`, it will relax the platform detection pre-requisite for matching games. This may lead to issues if there are duplicate games on different platforms.
+- `extract_games_from_watchdog_events()` - Processes filesystem change events (watch mode)
+  - Deduplicates events by game name
+  - Adds new games if detected for the first time
+  - Rescans affected games to pick up file changes
+
+### Sync Orchestration: sync_orchestrator.py
+
+**SyncOrchestrator** - Coordinates synchronization logic:
+- `full_sync()` - Complete sync of entire library
+  1. Validates matched vs unmatched games
+  2. Fetches current ROMM state for all games (`_fetch_romm_data()`)
+  3. Pushes local saves/states to ROMM (`_push_local_to_romm()`)
+  4. Returns `SyncResult` with success/failure details
+
+- `watchdog_sync()` - Incremental sync for file change events
+  1. Extracts affected games from event paths
+  2. Rescans those games for updated files
+  3. Fetches ROMM state for affected games only
+  4. Pushes local changes to ROMM
+
+**SyncManager** - Manages watchdog event lifecycle:
+- Buffers filesystem events in `pending_events` queue
+- Implements debounce timer (default 60 seconds)
+- Prevents concurrent syncs via `is_syncing` flag
+- `schedule_sync()` - Resets timer on new events
+- `execute_sync()` - Drains event queue and triggers `SyncOrchestrator.watchdog_sync()`
+- Thread-safe via `event_lock` and `timer_lock`
+
+**FileChangeHandler** - Watchdog event handler (inherits from `FileSystemEventHandler`):
+- Listens for `on_modified`, `on_created`, `on_deleted`, `on_moved` events
+- Filters metadata files before queueing
+- Passes valid events to `SyncManager.add_event()`
+- Triggers `SyncManager.schedule_sync()` to start/reset debounce timer
+
+## Sync Mode Comparison
+
+### Full Sync (Periodic Mode)
+
+**Flow**:
 ```
-ROMM_URL                   ┐
-ROMM_USERNAME              ├─► RommUser object (lazy-loaded)
-ROMM_PASSWORD              │
-ROMM_CONTAINER_NAME        ┘
-ROMM_BASE_DIR              ┐
-ROMM_API_LIMIT             ├─► RommSyncScheduler settings
-ROMM_LIBRARY_TTL_HOURS     │
-SYNC_FOLDER                │
-SYNC_INTERVAL_SECONDS      │
-SYNC_MODE                  │
-LOG_LEVEL                  ├─► logging configuration
-```
-
-All values come from environment variables, with sensible defaults.
-
-## Code Not Changed
-
-Your existing code remains untouched:
-- `src/library_classes.py` - Game and RetroGameServer classes (only comments added)
-- `src/romm_api_func.py` - ROMM API wrappers (only comments added)
-- `src/sync_operations.py` - SaveBackup class (only comments added)
-- `src/romm_sync.py` - Original main function (still works)
-- `src/config.py` - Configuration class (reference comment added)
-
-The new main loop is a separate entry point that uses your existing classes.
-
-## Key Design Decisions
-
-### 1. **Async/Await Architecture**
-- Ready for parallel operations (e.g., simultaneous file watch + library refresh)
-- Proper resource cleanup with async context managers
-- Future-proof for scaling
-
-### 2. **Graceful Shutdown**
-- Signal handlers allow Docker to stop container cleanly
-- Timeout in dockerfile (10s default) is sufficient for graceful shutdown
-- Important for multi-container coordination
-
-### 3. **Caching Strategy**
-- ROMM library cached with TTL (default 1 hour)
-- Reduces API calls by ~99% after first sync
-- Cache configuration is extensible for other data
-
-### 4. **Statistics Tracking**
-- Lightweight metrics collection
-- No external dependencies required
-- Extensible for future monitoring/metrics export
-
-### 5. **Modular Design**
-- RommSyncScheduler handles orchestration only
-- Delegates to existing classes for actual work
-- Easy to add new strategies without refactoring
-
-## Future Optimizations (Marked in Code)
-
-All marked with `FUTURE:` or `TODO:` comments:
-
-1. **LibraryCache** (`src/romm_api_func.py:get_full_library`)
-   - Persistent JSON caching of ROMM library
-   - Could reduce API calls 100x for large libraries
-
-2. **LocalStateTracker** (`src/sync_operations.py:match_to_romm`)
-   - Track file modification times
-   - Skip re-scanning unchanged files
-   - 10x faster for large catalogs
-
-3. **Watch Mode** (`src/main_loop.py:run_watch_mode`)
-   - Real-time file monitoring with watchdog
-   - Immediate sync on local changes
-   - Parallel with periodic ROMM refresh
-
-4. **SyncStrategy Pattern** (`src/sync_operations.py:sync_all_states`)
-   - Only sync changed games
-   - Avoid re-uploading unchanged saves
-   - Significant bandwidth savings
-
-5. **Remote Change Detection** (`src/library_classes.py:needs_romm_sync`)
-   - Track ROMM-side changes
-   - Avoid unnecessary syncs
-
-## Testing the Implementation
-
-### Minimal Test
-```bash
-# Set environment variables
-export ROMM_URL="http://localhost:8000"
-export ROMM_USERNAME="test"
-export ROMM_PASSWORD="test"
-export SYNC_FOLDER="/tmp/test_sync"
-export SYNC_INTERVAL_SECONDS="10"
-
-# Create test folder
-mkdir -p /tmp/test_sync/{NES,SNES}
-touch /tmp/test_sync/NES/TestGame.srm
-
-# Run
-python -m src.main_loop
+run_periodic_sync()
+  └─> Loop every SYNC_INTERVAL_SECONDS
+       └─> full_sync()
+            ├─> RetroGameServer.initialize_romm_map()  [Fresh API fetch]
+            ├─> LocalLibrary.build_local_library()      [Full filesystem scan]
+            ├─> LocalLibrary.match_to_romm()            [Match all games]
+            └─> SyncOrchestrator.full_sync()
+                 ├─> _fetch_romm_data() for all matched games
+                 └─> _push_local_to_romm() for all games
 ```
 
-Expected output:
-- Configuration validation
-- ROMM connection attempt
-- Local folder scan
-- Game matching
-- Sync attempt (may fail if ROMM not running, that's ok)
-- Loop continues every 10 seconds
+**Characteristics**:
+- Rebuilds ROMM and local libraries from scratch each cycle
+- Fetches ROMM state for every matched game
+- Syncs all games regardless of changes
+- Higher API load and longer execution time
 
-Press Ctrl+C to gracefully shutdown.
+### Watchdog Sync (Watch Mode)
 
-### Docker Test
-```bash
-# Build
-docker build -f Dockerfile.example -t romm-sync:test .
-
-# Run
-docker run -it \
-  -e ROMM_URL="http://host.docker.internal:8000" \
-  -e ROMM_USERNAME="test" \
-  -e ROMM_PASSWORD="test" \
-  -v /tmp/test_sync:/data/sync \
-  romm-sync:test
+**Flow**:
+```
+run_watch_sync()
+  ├─> Create SyncManager(srv, lcl, credentials)
+  ├─> Create FileChangeHandler(sync_manager)
+  └─> Start Observer monitoring SYNC_DIR
+       │
+       [Filesystem event occurs]
+       │
+       └─> FileChangeHandler._handle_event()
+            ├─> Filter metadata files
+            ├─> SyncManager.add_event()
+            └─> SyncManager.schedule_sync()
+                 │
+                 [Wait WATCHDOG_DELAY_SECONDS]
+                 │
+                 └─> SyncManager.execute_sync()
+                      └─> SyncOrchestrator.watchdog_sync()
+                           ├─> LocalLibrary.extract_games_from_watchdog_events()
+                           │    ├─> Detect affected games
+                           │    ├─> Add new games if needed
+                           │    └─> Rescan affected games
+                           ├─> _fetch_romm_data() for affected games only
+                           └─> _push_local_to_romm() for affected games only
 ```
 
-## Next Steps for Integration
+**Characteristics**:
+- Reuses initial ROMM and local libraries (no full rebuild)
+- Only fetches ROMM state for games with detected changes
+- Syncs only affected games
+- Lower API load and faster execution
+- Debounces rapid changes (waits for filesystem quiet period)
+- Thread-safe event buffering with concurrent sync prevention
 
-1. **Verify existing functionality** - The original `romm_sync.py` still works unchanged
-2. **Test main_loop.py** - Run locally with test environment
-3. **Build Docker image** - Using Dockerfile.example as template
-4. **Deploy to production** - Via docker-compose with your other services
-5. **Monitor and optimize** - Adjust `SYNC_INTERVAL_SECONDS` and `ROMM_LIBRARY_TTL_HOURS`
-6. **Implement optimizations** - Add LibraryCache, LocalStateTracker, etc. as needed
+**Key Difference**: Watch mode is **incremental and event-driven**, while periodic mode is **exhaustive and time-driven**.
 
----
+## Multiple Sync Folders Implementation
 
-**Status:** Production-ready architecture, waiting for integration testing and feedback.
+The application supports syncing from multiple directory locations, which is implemented as `SAVE` and `STATE` separate syncing to align with typical retro handheld custom firmware setups. However, the search logic behind-the-scenes doesn't actually differentiate and will capture both to make it easy to define arbitrary directories to sync if needed. (This would require refactoring a lot of the user-facing inputs though.)
+
+**LocalLibrary Processing** ([library_classes.py:284-308](library_classes.py#L284-L308)):
+- Constructor accepts `sync_folders: List[Path]` (plural, generic)
+- `build_local_library()` iterates through each sync folder
+- Platform directories are discovered within each folder
+- Files are aggregated into the same `self.games` dictionary
+- No distinction between save and state sources - unified game catalog
+
+**Naming Convention**:
+- Config uses `SAVE_SYNC_DIR` / `STATE_SYNC_DIR` (specific, user-facing)
+- Internal code uses `sync_folders` / `sync_dirs` (generic, extensible)
+
+## Key Components
+- `library_classes.py` - Data models and filesystem operations
+- `sync_orchestrator.py` - Sync coordination and event handling
+- `romm_api_func.py` - ROMM API call functions (using python `requests` library)
+- `games_class.py` - Individual game class, containing a game's local and romm data (name, platform, save files, save states...)
+
+## Supporting Libraries
+
+**External Dependencies**:
+- `watchdog` - Filesystem event monitoring (watch mode)
+- `polars` - High-performance DataFrame library
+- `loguru` - Structured logging with per-module filtering
+- `requests` - HTTP client for ROMM API (via `romm_api_func`)
+- `dotenv` - Environment variable management
+
+## Generative AI usage disclosure
+I used AI assistance in the following ways:
+- quickly get me going with sample patterns for libraries I was unfamiliar with (mainly: `pytest.mock`, `watchdog`, `loguru`, and `requests`) before I did the implementation myself. 
+- documentation, which I proofread and sanitized/edited as needed
+- autocomplete
+
+The code is 100% mine (for better or worse).

@@ -47,7 +47,7 @@ class Game:
     """
 
     name: str  # Game name (from folder/filename)
-
+    path: Path  # local filepath
     # Local folder game data (syncthing/backup directory)
     platform: Optional[str] = None  # platform. This is the save sync folder name (i.e. "slug")
     local_save_files: List[SaveFile] = field(default_factory=list)  # Paths to local save files
@@ -61,7 +61,7 @@ class Game:
     romm_id: Optional[int] = None  # ROMM database ID for this game -- used for api lookups
     romm_name: Optional[str] = None  # Game name from ROMM (may differ from local name) -- informational
     romm_platform: Optional[str] = None  # Platform from ROMM (may differ if matched) -- informational
-    romm_platform_id: Optional[str] = None  # Platform ID (int) from ROMM -- used for api lookups.
+    romm_platform_id: Optional[int] = None  # Platform ID (int) from ROMM -- used for api lookups.
     romm_fs_size: Optional[float] = None  # File size in MB from ROMM
 
     # Match quality indicators

@@ -32,8 +32,11 @@ class Config:
 
     def __init__(self,
                  romm_credentials: RommUser = RommUser(),
-                 sync_dir: str | Path = "/syncdata",  # docker bind mount
+                 save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_DIR") is not None else None,   # docker bind mount
+                 state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_DIR") is not None else None,  # docker bind mount
+                 all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_DIR") is not None else None,  # docker bind mount
                  data_dir: str | Path = "/appdata",   # docker bind mount
+                 allow_skip_platform_verification: bool = bool(os.getenv("ALLOW_SKIP_PLATFORM_VERIFICATION", False)),
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
                  sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
                  sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
@@ -44,10 +47,14 @@ class Config:
 
         # ROMM API Configuration
         self.ROMM_CREDENTIALS: RommUser = romm_credentials
+        # self.ROMM_PLATFORM_MAP
 
         # Sync Configuration
-        self.SYNC_DIR = Path(sync_dir)
+        self.SAVE_SYNC_DIR = save_sync_dir
+        self.STATE_SYNC_DIR = state_sync_dir
+        self.ALL_SYNC_DIR = all_sync_dir
         self.SYNC_MODE = sync_mode
+        self.ALLOW_SKIP_PLATFORM_VERIFICATION = allow_skip_platform_verification
         self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
         self.WATCHDOG_DELAY_SECONDS = watchdog_delay_seconds
 
@@ -81,8 +88,22 @@ class Config:
             errors.append("ROMM_PASSWORD is required!")
         if not self.ROMM_CREDENTIALS.user:
             errors.append("ROMM_USERNAME is required!")
-        if not self.SYNC_DIR or not self.SYNC_DIR.exists():
-            errors.append("SYNC_DIR does not exist or is not configured!")
+        
+        # Validate sync directory configuration pattern
+        # Valid patterns: (SAVE_SYNC_DIR + STATE_SYNC_DIR) XOR ALL_SYNC_DIR
+        has_specific_dirs = self.SAVE_SYNC_DIR is not None and self.STATE_SYNC_DIR is not None
+        has_all_dir = self.ALL_SYNC_DIR is not None
+
+        if not (has_specific_dirs ^ has_all_dir):
+            errors.append("Must specify either (SAVE_SYNC_DIR & STATE_SYNC_DIR) or ALL_SYNC_DIR, not both or neither.")
+
+        # Validate that specified directories exist
+        if self.SAVE_SYNC_DIR and not self.SAVE_SYNC_DIR.exists():
+            errors.append(f"SAVE_SYNC_DIR does not exist: {self.SAVE_SYNC_DIR}")
+        if self.STATE_SYNC_DIR and not self.STATE_SYNC_DIR.exists():
+            errors.append(f"STATE_SYNC_DIR does not exist: {self.STATE_SYNC_DIR}")
+        if self.ALL_SYNC_DIR and not self.ALL_SYNC_DIR.exists():
+            errors.append(f"ALL_SYNC_DIR does not exist: {self.ALL_SYNC_DIR}")
 
         if errors:
             raise ValueError(f"Configuration errors: {', '.join(errors)}")
@@ -95,7 +116,7 @@ _config: Optional[Config] = None
 
 
 def get_config() -> Config:
-    """Get the global Config instance.
+    """Get the global Config instance. The first call to initialize the config is in main.py.
 
     Auto-initializes from environment variables on first call if not already set.
     This allows internal functions to get the config without needing to pass it around.
@@ -150,8 +171,6 @@ class LoggingConfig:
     @classmethod
     def setup(cls, log_level: str | None = None):
         """Configure loguru logging and return logger instance.
-
-        Can be called multiple times - will reconfigure if log_level differs from current.
         """
 
         if log_level is None:
@@ -187,15 +206,14 @@ class LoggingConfig:
                 # App code - use default terminal color
                 timestamp_colored = "{time:YYYY-MM-DD HH:mm:ss}"
 
-            # Level colors (works on both light and dark terminals)
-            # Using darker variants (standard yellow/red) instead of light- variants
+            # chose colors that should be equally visible in light and dark mode
             level_colors = {
                 "TRACE": "dim",
                 "DEBUG": "blue",
-                "INFO": "",  # Default text color
+                "INFO": "",  # Default text color so it automatically adapts to light and dark mode
                 "SUCCESS": "green",
-                "WARNING": "yellow",  # [33m - darker than light-yellow, better on light terminals
-                "ERROR": "red",  # [31m - darker than light-red, better on light terminals
+                "WARNING": "yellow",
+                "ERROR": "red",  
                 "CRITICAL": "red"
             }
             level_color = level_colors.get(level_name, "")
@@ -212,7 +230,7 @@ class LoggingConfig:
                 else:
                     level_formatted = "{level: <8}"
 
-            # Build format string - cleaner without module name
+            # Build format string. The timestamps are colored by module.
             return (
                 f"{timestamp_colored} | "
                 f"{level_formatted} | "

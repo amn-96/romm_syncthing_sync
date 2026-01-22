@@ -18,9 +18,9 @@ def cleanup(sync_manager: SyncManager, signum, frame):
     sys.exit(0)
 
 
-def get_local_library(srv: RetroGameServer, library_path: Path) -> LocalLibrary:
+def get_local_library(srv: RetroGameServer, library_paths: list[Path]) -> LocalLibrary:
     logger.info("Building local game library and matching to contents of your ROMM server.")
-    local_library = LocalLibrary(library_path)
+    local_library = LocalLibrary(library_paths)
     local_library.build_local_library()
     # Match games to ROMM
     local_library.match_to_romm(list(local_library.games.values()), srv)
@@ -41,7 +41,12 @@ def full_sync(app_cfg: Config) -> tuple[RetroGameServer, LocalLibrary]:
 
     # Initialize a fresh state for the romm library and local library
     romm_library = RetroGameServer.initialize_romm_map(app_cfg.ROMM_CREDENTIALS)
-    lcl = get_local_library(srv=romm_library, library_path=app_cfg.SYNC_DIR)
+    # allocate the correct list of synced directories to search
+    if app_cfg.SAVE_SYNC_DIR and app_cfg.STATE_SYNC_DIR:
+        sync_dirs = [app_cfg.SAVE_SYNC_DIR, app_cfg.STATE_SYNC_DIR]
+    else:
+        sync_dirs = [app_cfg.ALL_SYNC_DIR]
+    lcl = get_local_library(srv=romm_library, library_paths=sync_dirs)
 
     # Use orchestrator for full sync
     orchestrator = SyncOrchestrator(lcl, romm_library, app_cfg.ROMM_CREDENTIALS)
