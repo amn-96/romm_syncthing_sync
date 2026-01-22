@@ -25,10 +25,6 @@ def get_local_library(srv: RetroGameServer, library_paths: list[Path]) -> LocalL
     # Match games to ROMM
     local_library.match_to_romm(list(local_library.games.values()), srv)
 
-    # Cache the library
-    # cfg = get_config()
-    # local_library.to_json(filepath=cfg.CACHE_FILEPATH)
-
     return local_library
 
 
@@ -50,7 +46,7 @@ def full_sync(app_cfg: Config) -> tuple[RetroGameServer, LocalLibrary]:
 
     # Use orchestrator for full sync
     orchestrator = SyncOrchestrator(lcl, romm_library, app_cfg.ROMM_CREDENTIALS)
-    result = orchestrator.full_sync(cache_filepath=app_cfg.CACHE_FILEPATH)
+    result = orchestrator.full_sync()
 
     if not result.success:
         logger.warning(f"Full sync encountered errors: {result.error_message}")

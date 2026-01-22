@@ -108,17 +108,12 @@ class SyncOrchestrator:
         unmatched = [g for g in games if not g.is_matched]
         return matched, unmatched
 
-    def full_sync(self, cache_filepath: Optional[Path] = None) -> SyncResult:
+    def full_sync(self) -> SyncResult:
         """Perform a complete synchronization between local library and ROMM.
-
         This is the main sync operation that:
         1. Fetches current ROMM state for all matched games
         2. Pushes local saves/states to ROMM
         3. Caches the updated library state
-
-        Args:
-            cache_filepath: Path to save the cache file after sync (optional)
-
         Returns:
             SyncResult with details of the operation
         """
@@ -149,10 +144,6 @@ class SyncOrchestrator:
             result.games_synced = successful
             result.games_failed = failed
 
-            # if cache_filepath:
-            #     logger.info(f"Caching library state to {cache_filepath}")
-            #     self.local_library.to_json(cache_filepath)
-
             result.success = len(failed) == 0
             if len(successful) == 0 and len(failed) == 0:
                 logger.debug("[FULLSYNC] No changes detected - libraries already in sync")
@@ -166,7 +157,7 @@ class SyncOrchestrator:
             logger.error(f"[FULLSYNC] Failed! {e}", exc_info=True)
             return result
 
-    def watchdog_sync(self, event_paths: List[Path], event_types: List[str], cache_filepath: Optional[Path] = None) -> SyncResult:
+    def watchdog_sync(self, event_paths: List[Path], event_types: List[str]) -> SyncResult:
         """Perform an incremental sync of all file changes gathered by the watchdog.
 
         This sync operation:
@@ -213,10 +204,6 @@ class SyncOrchestrator:
             result.games_synced = successful
             result.games_failed = failed
 
-            # if cache_filepath:
-            #     logger.info(f"Caching library state to {cache_filepath}")
-            #     self.local_library.to_json(cache_filepath)
-
             result.success = len(failed) == 0
             logger.info("---------- Watchdog sync completed ----------")
 
@@ -233,7 +220,7 @@ class SyncManager:
     """Manages sync state and coordinates watchdog events with ROMM sync operations."""
 
     def __init__(self, srv: RetroGameServer, lcl: LocalLibrary, romm_user: RommUser,
-                 watchdog_delay_seconds: int = 60, cache_filepath: Optional[Path] = None):
+                 watchdog_delay_seconds: int = 60):
         """Initialize sync manager.
 
         Args:
@@ -241,10 +228,8 @@ class SyncManager:
             lcl: LocalLibrary instance
             romm_user: RommUser credentials
             watchdog_delay_seconds: Delay before executing sync after file changes
-            cache_filepath: Path to cache file (saved after each sync)
         """
         self.orchestrator = SyncOrchestrator(lcl, srv, romm_user)
-        self.cache_filepath = cache_filepath
         self.watchdog_delay_seconds = watchdog_delay_seconds
         self.pending_events: List[ValidEvent] = []
         self.event_lock = threading.Lock()
@@ -293,7 +278,7 @@ class SyncManager:
                 self.pending_events.clear()
 
             # Use orchestrator to handle watchdog sync
-            result = self.orchestrator.watchdog_sync(event_paths, event_types, self.cache_filepath)
+            result = self.orchestrator.watchdog_sync(event_paths, event_types)
 
             if result.success:
                 logger.info(f"Watchdog sync succeeded: {len(result.games_synced)} games synced")

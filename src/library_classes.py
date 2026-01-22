@@ -94,24 +94,6 @@ class LocalLibrary:
         self.sync_folders: List[Path] = sync_folders
         self.games: Dict[str, Game] = {}
 
-    # # Initialize from a previously-built JSON file to save time.
-    # @classmethod
-    # def from_json(cls, filepath: Path, sync_folder: Path) -> 'LocalLibrary':
-    #     """Load catalog from JSON file."""
-    #     local_library = cls(sync_folder)
-    #     try:
-    #         with open(filepath, 'r') as f:
-    #             data = json.load(f)
-    #     except FileNotFoundError as fe:
-    #         logger.info("No existing cache file found.")
-    #         raise (fe)
-    #     except Exception as e:
-    #         logger.error(f"{e}")
-    #         raise (e)
-
-    #     local_library.games = {game_data['name']: Game.from_dict(game_data) for game_data in data}
-    #     return local_library
-
     # region Scan Functions
     @staticmethod
     def _collect_games(platform_dir: Path) -> List[Path]:
@@ -334,15 +316,6 @@ class LocalLibrary:
             logger.debug(f"Unmatched: {total - matched}.")
         else:
             logger.warning(f"No saves or states were found in {", ".join([str(sf) for sf in self.sync_folders])}.")
-
-    # def _to_dict(self) -> list:
-    #     """Serialize entire catalog to list of dictionaries for caching."""
-    #     return [game.to_dict() for game in self.games.values()]
-
-    # def to_json(self, filepath: Path) -> None:
-    #     """Save catalog to JSON file for caching between runs."""
-    #     with open(filepath, 'w') as f:
-    #         json.dump(self._to_dict(), f, indent=2)
     # endregion
 
     # region File Watcher / Sync Functions
@@ -367,7 +340,7 @@ class LocalLibrary:
 
             # Create the Game object
             file_info = games_dict[game_name]
-            new_game = Game(name=game_name, platform=file_info['platform'])
+            new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])
 
             # Match to ROMM
             self.match_to_romm([new_game], romm_library)

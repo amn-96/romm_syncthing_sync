@@ -58,11 +58,6 @@ class Config:
         self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
         self.WATCHDOG_DELAY_SECONDS = watchdog_delay_seconds
 
-        # Data/Cache Configuration
-        self.DATA_DIR = Path(data_dir)
-        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.CACHE_FILEPATH = self.DATA_DIR / f"LibraryCache_{self.ROMM_CREDENTIALS.user}.json"
-
         # Logging Configuration
         self.LOG_LEVEL = log_level
         self.LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

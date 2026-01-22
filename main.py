@@ -49,16 +49,11 @@ def run_periodic_sync(app_cfg):
 
 def run_watch_sync(srv, lcl, app_cfg):
     """Run ROMM sync in watch mode, syncing on file system changes."""
-    # Verify directory exists
-    if not Path(app_cfg.SYNC_DIR).exists():
-        logger.error(f"Directory does not exist: {app_cfg.SYNC_DIR}")
-        sys.exit(1)
-
-    # Create sync manager with configurable delay and cache filepath
+    
+    # Create sync manager with configurable delay
     sync_manager = SyncManager(
         srv, lcl, app_cfg.ROMM_CREDENTIALS,
         watchdog_delay_seconds=int(app_cfg.WATCHDOG_DELAY_SECONDS),
-        cache_filepath=app_cfg.CACHE_FILEPATH
     )
 
     def signal_handler(signum, frame):
