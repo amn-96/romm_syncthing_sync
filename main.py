@@ -67,7 +67,14 @@ def run_watch_sync(srv, lcl, app_cfg):
     # Create event handler with sync manager
     event_handler = FileChangeHandler(sync_manager)
     observer = Observer()
-    observer.schedule(event_handler, str(app_cfg.SYNC_DIR), recursive=True)
+
+    # Determine which directories to watch
+    watch_dirs = lcl.sync_folders
+
+    # Schedule observer for each directory
+    for watch_dir in watch_dirs:
+        observer.schedule(event_handler, str(watch_dir), recursive=True)
+        logger.info(f"Watching directory: {watch_dir}")
 
     # Start observer
     observer.start()
