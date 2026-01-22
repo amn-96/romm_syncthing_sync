@@ -62,7 +62,6 @@ def full_sync(app_cfg: Config) -> tuple[RetroGameServer, LocalLibrary]:
 def initialize_romm_sync():
     # Get the app's configuration from docker env variables. See .env.example
     app_cfg = get_config()
-    app_cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # First sync. Compares all save states
     logger.info("Performing initial sync. This may take a while...")

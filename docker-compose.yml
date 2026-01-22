@@ -11,4 +11,3 @@ services:
       # - ${ALL_SYNC_FOLDER}:/syncdata:ro  # Uncomment if saves and states in the same folder.
       - ${SAVE_SYNC_FOLDER}:/syncdata/saves:ro
       - ${STATE_SYNC_FOLDER}:/syncdata/states:ro
-      - ./data:/appdata

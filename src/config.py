@@ -35,7 +35,6 @@ class Config:
                  save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_FOLDER") else None,   # docker bind mount
                  state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_FOLDER") else None,  # docker bind mount
                  all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_FOLDER") else None,  # docker bind mount
-                 data_dir: str | Path = "/appdata",   # docker bind mount
                  allow_skip_platform_verification: bool = bool(os.getenv("ALLOW_SKIP_PLATFORM_VERIFICATION", False)),
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
                  sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
