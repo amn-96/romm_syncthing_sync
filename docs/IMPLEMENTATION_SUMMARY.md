@@ -54,7 +54,7 @@ main()
 - Sets up logging via `LoggingConfig` with per-library filtering
 - Creates singleton instance via `get_config()` for global access
 
-**Key validation**: Enforces that either `(SAVE_SYNC_DIR + STATE_SYNC_DIR)` OR `ALL_SYNC_DIR` is specified, but not both.
+**Key validation**: Enforces that either (env variables) `(SAVE_SYNC_FOLDER + STATE_SYNC_FOLDER)` OR `ALL_SYNC_FOLDER` is specified, but not both.
 
 ### Initialization: romm_sync.py
 

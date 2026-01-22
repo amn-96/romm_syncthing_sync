@@ -32,9 +32,9 @@ class Config:
 
     def __init__(self,
                  romm_credentials: RommUser = RommUser(),
-                 save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_DIR") else None,   # docker bind mount
-                 state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_DIR") else None,  # docker bind mount
-                 all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_DIR") else None,  # docker bind mount
+                 save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_FOLDER") else None,   # docker bind mount
+                 state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_FOLDER") else None,  # docker bind mount
+                 all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_FOLDER") else None,  # docker bind mount
                  data_dir: str | Path = "/appdata",   # docker bind mount
                  allow_skip_platform_verification: bool = bool(os.getenv("ALLOW_SKIP_PLATFORM_VERIFICATION", False)),
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
@@ -88,14 +88,18 @@ class Config:
             errors.append("ROMM_PASSWORD is required!")
         if not self.ROMM_CREDENTIALS.user:
             errors.append("ROMM_USERNAME is required!")
-        
+
         # Validate sync directory configuration pattern
         # Valid patterns: (SAVE_SYNC_DIR + STATE_SYNC_DIR) XOR ALL_SYNC_DIR
         has_specific_dirs = self.SAVE_SYNC_DIR is not None and self.STATE_SYNC_DIR is not None
         has_all_dir = self.ALL_SYNC_DIR is not None
 
         if not (has_specific_dirs ^ has_all_dir):
-            errors.append("Must specify either (SAVE_SYNC_DIR & STATE_SYNC_DIR) or ALL_SYNC_DIR, not both or neither.")
+            # edge case where none of them are present
+            if self.SAVE_SYNC_DIR is None and self.STATE_SYNC_DIR is None and self.ALL_SYNC_DIR is None:
+                errors.append("No sync directories configured. Check your .env configuration.")
+            else:
+                errors.append("Must specify either (SAVE_SYNC_DIR & STATE_SYNC_DIR) or ALL_SYNC_DIR, not both or neither.")
 
         # Validate that specified directories exist
         if self.SAVE_SYNC_DIR and not self.SAVE_SYNC_DIR.exists():
