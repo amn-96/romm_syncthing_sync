@@ -32,9 +32,9 @@ class Config:
 
     def __init__(self,
                  romm_credentials: RommUser = RommUser(),
-                 save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_DIR") is not None else None,   # docker bind mount
-                 state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_DIR") is not None else None,  # docker bind mount
-                 all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_DIR") is not None else None,  # docker bind mount
+                 save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_DIR") else None,   # docker bind mount
+                 state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_DIR") else None,  # docker bind mount
+                 all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_DIR") else None,  # docker bind mount
                  data_dir: str | Path = "/appdata",   # docker bind mount
                  allow_skip_platform_verification: bool = bool(os.getenv("ALLOW_SKIP_PLATFORM_VERIFICATION", False)),
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
