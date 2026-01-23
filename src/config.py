@@ -3,10 +3,11 @@ import os
 import sys
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List
 from loguru import logger
 from .romm_api_func import RommUser
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
@@ -35,10 +36,10 @@ class Config:
                  save_sync_dir: Path | None = Path("/syncdata/saves") if os.getenv("SAVE_SYNC_FOLDER") else None,   # docker bind mount
                  state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_FOLDER") else None,  # docker bind mount
                  all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_FOLDER") else None,  # docker bind mount
-                 allow_skip_platform_verification: bool = bool(os.getenv("ALLOW_SKIP_PLATFORM_VERIFICATION", False)),
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
                  sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
                  sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
+                 platform_map: Path = Path("/config/platform_mapping.yaml"),
                  log_level: str = os.getenv("LOG_LEVEL", "INFO"),
                  dry_run: bool = os.getenv("DRY_RUN", "false").lower() == "true",
                  enable_metrics: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true"):
@@ -46,16 +47,16 @@ class Config:
 
         # ROMM API Configuration
         self.ROMM_CREDENTIALS: RommUser = romm_credentials
-        # self.ROMM_PLATFORM_MAP
 
         # Sync Configuration
         self.SAVE_SYNC_DIR = save_sync_dir
         self.STATE_SYNC_DIR = state_sync_dir
         self.ALL_SYNC_DIR = all_sync_dir
         self.SYNC_MODE = sync_mode
-        self.ALLOW_SKIP_PLATFORM_VERIFICATION = allow_skip_platform_verification
         self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
         self.WATCHDOG_DELAY_SECONDS = watchdog_delay_seconds
+        self.PLATFORM_MAP_PATH = platform_map
+        self.PLATFORM_MAP: Dict[str, List[str]] = {}
 
         # Logging Configuration
         self.LOG_LEVEL = log_level
@@ -67,6 +68,7 @@ class Config:
         # Feature Flags
         self.DRY_RUN = dry_run
         self.ENABLE_METRICS = enable_metrics
+
 
     def validate(self):
         """Validate required configuration values.
@@ -102,6 +104,10 @@ class Config:
             errors.append(f"STATE_SYNC_DIR does not exist: {self.STATE_SYNC_DIR}")
         if self.ALL_SYNC_DIR and not self.ALL_SYNC_DIR.exists():
             errors.append(f"ALL_SYNC_DIR does not exist: {self.ALL_SYNC_DIR}")
+
+        # Validate platform mapping file (optional - will fallback to exact matching)
+        if not self.PLATFORM_MAP_PATH.exists():
+            logger.warning(f"Platform mapping file not found: {self.PLATFORM_MAP_PATH}. Will use exact platform slug matching only.")
 
         if errors:
             raise ValueError(f"Configuration errors: {', '.join(errors)}")

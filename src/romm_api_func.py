@@ -60,7 +60,7 @@ class RommSaves:
                 files=files
             )
             logger.debug(f"POST {url} - {response.status_code}")
-            # return response.json()
+            return response.json()
 
     def update(self,
                local_filepath: str | Path,
@@ -227,60 +227,34 @@ class RommUser:
             self._states = RommStates(self)
         return self._states
 
-    def _get(self,
-             endpoint: str,
-             params: Optional[Dict] = None) -> Dict:
-        """Generic wrapper for ROMM API GET requests.
-        Args:
-            creds: RommUser credentials object
-            endpoint: API endpoint (e.g., "/api/states")
-            params: Optional query parameters
-        Returns:
-            Parsed JSON response as a dictionary
-        """
-        url = f"{self.url}{endpoint}"
-        response = requests.get(url, auth=HTTPBasicAuth(self.user, self.password), params=params)
-        logger.debug(f"GET {url} - {response.status_code}")
-        return response.json()
 
-    def _post(self,
-              endpoint: str,
-              params: Optional[Dict] = None,
-              data: Optional[bytes] = None,
-              headers: Optional[Dict] = None) -> Dict:
-        """Generic wrapper for ROMM API POST requests.
-        Args:
-            endpoint: API endpoint (e.g., "/api/states")
-            params: Optional query parameters
-            data: Optional binary data (file content) for request body
-            headers: Optional custom headers
-        Returns:
-            Parsed JSON response as a dictionary
-        """
-        url = f"{self.url}{endpoint}"
-        response = requests.post(url,
-                                 auth=HTTPBasicAuth(self.user, self.password),
-                                 params=params,
-                                 data=data,
-                                 headers=headers)
-        logger.debug(f"POST {url} - {response.status_code}")
-        return response.json()
+    def _validate_library_response(self, response) -> dict:
+        """Validate and parse ROMM API library response.
 
-    def _put(self,
-             endpoint: str,
-             params: Optional[Dict] = None) -> Dict:
-        """Generic wrapper for ROMM API PUT requests.
         Args:
-            creds: RommUser credentials object
-            endpoint: API endpoint (e.g., "/api/states")
-            params: Optional query parameters
+            response: requests.Response object from ROMM API
+
         Returns:
-            Parsed JSON response as a dictionary
+            Validated data dict with 'items' key
+
+        Raises:
+            RuntimeError: If response is malformed
         """
-        url = f"{self.url}{endpoint}"
-        response = requests.put(url, auth=HTTPBasicAuth(self.user, self.password), params=params)
-        logger.debug(f"PUT {url} - {response.status_code}")
-        return response.json()
+        try:
+            data = response.json()
+        except ValueError as e:
+            logger.critical(f"Failed to decode JSON response: {e}")
+            raise RuntimeError(f"Invalid JSON from ROMM API: {e}")
+
+        if "items" not in data:
+            logger.critical(f"Malformed API response: missing 'items' key. Got keys: {list(data.keys())}")
+            raise RuntimeError("ROMM API response missing 'items' key")
+
+        if not isinstance(data["items"], list):
+            logger.critical(f"Malformed API response: 'items' is not a list, got {type(data['items'])}")
+            raise RuntimeError("ROMM API response 'items' is not a list")
+
+        return data
 
     def get_full_library(self) -> dict:
         """Gets the full list of ROM's in the ROMM.app database, with arg support for pagination.
@@ -319,7 +293,7 @@ class RommUser:
                 raise RuntimeError("ROMM API returned 422 - Invalid data")
 
             response.raise_for_status()  # Raise for any other HTTP errors
-            data = response.json()
+            data = self._validate_library_response(response)
 
             if not data.get("items"):
                 logger.debug("No more items to fetch")
@@ -336,6 +310,5 @@ class RommUser:
             offset += limit
 
         logger.debug(f"Total items retrieved: {len(all_items)}")
-        logger.debug("Response received successfully")
 
         return {"items": all_items}

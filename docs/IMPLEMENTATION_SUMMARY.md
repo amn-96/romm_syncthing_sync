@@ -66,7 +66,7 @@ main()
 
 **`full_sync(app_cfg)`** performs complete synchronization:
 
-1. **Initialize ROMM library** - `RetroGameServer.initialize_romm_map()` fetches full game library from ROMM API
+1. **Initialize ROMM library** - `RetroGameServer.build_romm_library()` fetches full game library from ROMM API
 2. **Build local library** - `LocalLibrary(sync_dirs)` scans filesystem for saves/states
 3. **Match games** - Links local files to ROMM entries via platform and filename matching
 4. **Execute sync** - `SyncOrchestrator.full_sync()` performs bidirectional sync
@@ -87,8 +87,8 @@ main()
   - Uses regex matching to categorize: saves (`.srm`), states (`.state*`), screenshots (`.state*.png`)
   - Aggregates files per game into `Game` objects
 - `match_to_romm()` - Links games to ROMM library entries
-  - Primary matching: filters by platform, then searches `fs_name` for game name
-  - Fallback option: if `ALLOW_SKIP_PLATFORM_VERIFICATION=true`, it will relax the platform detection pre-requisite for matching games. This may lead to issues if there are duplicate games on different platforms.
+  - Primary matching: filters by platform, then searches `fs_name` for game name.
+  - Uses platform_mapping.yaml to allow multiple matches for romm's platform slug
 - `extract_games_from_watchdog_events()` - Processes filesystem change events (watch mode)
   - Deduplicates events by game name
   - Adds new games if detected for the first time
@@ -132,7 +132,7 @@ main()
 run_periodic_sync()
   └─> Loop every SYNC_INTERVAL_SECONDS
        └─> full_sync()
-            ├─> RetroGameServer.initialize_romm_map()  [Fresh API fetch]
+            ├─> RetroGameServer.build_romm_library()  [Fresh API fetch]
             ├─> LocalLibrary.build_local_library()      [Full filesystem scan]
             ├─> LocalLibrary.match_to_romm()            [Match all games]
             └─> SyncOrchestrator.full_sync()

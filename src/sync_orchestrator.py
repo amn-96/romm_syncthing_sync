@@ -9,10 +9,12 @@ from loguru import logger
 import threading
 from collections import namedtuple
 
+from time import perf_counter as tpc
+
 from .games_class import Game
 from .library_classes import LocalLibrary, RetroGameServer
 from .romm_api_func import RommUser
-from .config import METADATA_FILE_FILTERS
+from .config import get_config, METADATA_FILE_FILTERS
 from watchdog.events import FileSystemEventHandler
 
 
@@ -44,19 +46,31 @@ class SyncOrchestrator:
     """Orchestrates synchronization operations between local library and ROMM server.
     """
 
-    def __init__(self, local_library: LocalLibrary, romm_server: RetroGameServer, romm_user: RommUser):
-        """Initialize the orchestrator with required components.
-
-        Args:
-            local_library: LocalLibrary instance managing local game files
-            romm_server: RetroGameServer instance managing ROMM library state
-            romm_user: RommUser instance with ROMM API credentials
+    def __init__(self, local_library: LocalLibrary, romm_server: RetroGameServer):
+        """Orchestrator needs to keep and update a single instance of LocalLibrary and RetroGameServer.
         """
-        self.local_library = local_library
-        self.romm_server = romm_server
-        self.romm_user = romm_user
+        self.lcl = local_library
+        self.srv = romm_server
+        self.app_cfg = get_config()
+    
+    @staticmethod
+    def build_libraries(app_cfg):
+        """Build fresh local and romm libraries in one step. For iniitialization."""
+        srv = RetroGameServer.build_romm_library(app_cfg.ROMM_CREDENTIALS)
+        
+        if app_cfg.SAVE_SYNC_DIR and app_cfg.STATE_SYNC_DIR:
+            sync_dirs = [app_cfg.SAVE_SYNC_DIR, app_cfg.STATE_SYNC_DIR]
+        else:
+            sync_dirs = [app_cfg.ALL_SYNC_DIR]
+        
+        lcl = LocalLibrary(sync_dirs)
+        lcl.build_local_library()
+        lcl.match_to_romm(list(lcl.games.values()), srv)
+        
+        return srv, lcl
 
-    def _fetch_romm_data(self, games: List[Game]) -> None:
+    @staticmethod
+    def _fetch_romm_data(games: List[Game]) -> None:
         """Fetch current saves and states from ROMM for given games.
 
         Args:
@@ -71,7 +85,8 @@ class SyncOrchestrator:
                 except Exception as e:
                     logger.error(f"Failed to fetch ROMM data for {game.name}: {e}")
 
-    def _push_local_to_romm(self, games: List[Game]) -> tuple[List[Game], List[tuple[Game, Exception]]]:
+    @staticmethod
+    def _push_local_to_romm(games: List[Game]) -> tuple[List[Game], List[tuple[Game, Exception]]]:
         """Push local saves and states to ROMM.
 
         Args:
@@ -95,7 +110,8 @@ class SyncOrchestrator:
                     failed.append((game, e))
         return successful, failed
 
-    def _validate_games(self, games: List[Game]) -> tuple[List[Game], List[Game]]:
+    @staticmethod
+    def _validate_games(games: List[Game]) -> tuple[List[Game], List[Game]]:
         """Separate matched and unmatched games.
 
         Args:
@@ -107,6 +123,7 @@ class SyncOrchestrator:
         matched = [g for g in games if g.is_matched]
         unmatched = [g for g in games if not g.is_matched]
         return matched, unmatched
+        
 
     def full_sync(self) -> SyncResult:
         """Perform a complete synchronization between local library and ROMM.
@@ -120,9 +137,12 @@ class SyncOrchestrator:
         logger.info("---------- Starting full sync ----------")
         result = SyncResult()
 
+        # Initialize a fresh state for the romm library and local library
+        self.srv, self.lcl = self.build_libraries(self.app_cfg) 
+
         try:
             matched_games, unmatched_games = self._validate_games(
-                list(self.local_library.games.values())
+                list(self.lcl.games.values())
             )
             result.unmatched_games = unmatched_games
 
@@ -145,8 +165,18 @@ class SyncOrchestrator:
             result.games_failed = failed
 
             result.success = len(failed) == 0
+            
             if len(successful) == 0 and len(failed) == 0:
                 logger.debug("[FULLSYNC] No changes detected - libraries already in sync")
+            
+            if not result.success:
+                logger.warning(f"[FULLSYNC] Encountered errors: {result.error_message}")
+            if result.games_failed:
+                logger.warning(f"[FULLSYNC] {len(result.games_failed)} games failed to sync")
+            if result.unmatched_games:
+                logger.info(f"[FULLSYNC] {len(result.unmatched_games)} games could not be matched to ROMM")
+                logger.info(f"[FULLSYNC] Unmatched games: {', '.join([ug.name for ug in result.unmatched_games])}")
+
             logger.info("---------- Full sync completed ----------")
 
             return result
@@ -167,8 +197,15 @@ class SyncOrchestrator:
         4. Pushes local changes to ROMM
         """
         logger.info("---------- Starting watchdog sync ----------")
-        result = SyncResult()
+        
+        # First, refresh the romm library.
+        logger.debug("[WATCHDOGSYNC] Updating state of Romm library.")
+        # updates the romm server object with a fresh, rebuilt instance. This is needed so that newly added games are not missed.
+        self.srv = RetroGameServer.build_romm_library(self.app_cfg.ROMM_CREDENTIALS)
 
+        result = SyncResult()
+        # next, partial sync of only modified files. 
+        # This saves a lot of time because building the local library requires api calls for every single game to fetch the saves and states.
         try:
             if not event_paths:
                 logger.info("[WATCHDOGSYNC] No events to process")
@@ -179,11 +216,11 @@ class SyncOrchestrator:
             for p, t in zip(event_paths, event_types):
                 logger.debug(f"[WATCHDOGSYNC] --- File: {p}, Type: {t}")
             
-            # Step 1: Extract affected games from watchdog events
+            # Extract the games using the file paths recorded by watchdog
             logger.info(f"[WATCHDOGSYNC] Processing {len(event_paths)} file change events...")
-            games_to_sync = self.local_library.extract_games_from_watchdog_events(
+            games_to_sync = self.lcl.extract_games_from_watchdog_events(
                 event_paths,
-                self.romm_server
+                self.srv
             )
 
             if not games_to_sync:
@@ -195,7 +232,7 @@ class SyncOrchestrator:
 
             logger.info(f"[WATCHDOGSYNC] Syncing save data for {len(games_to_sync)} games...")
 
-            # Step 2: Fetch current ROMM state
+            # Fetch current ROMM state
             self._fetch_romm_data(games_to_sync)
 
             # Step 3: Push local to ROMM
@@ -205,6 +242,7 @@ class SyncOrchestrator:
             result.games_failed = failed
 
             result.success = len(failed) == 0
+            
             logger.info("---------- Watchdog sync completed ----------")
 
             return result
@@ -216,21 +254,14 @@ class SyncOrchestrator:
             return result
 
 
-class SyncManager:
-    """Manages sync state and coordinates watchdog events with ROMM sync operations."""
+class WatchdogSyncManager:
+    """Manages watchdog sync state and coordinates filesystem events with ROMM sync operations."""
 
-    def __init__(self, srv: RetroGameServer, lcl: LocalLibrary, romm_user: RommUser,
-                 watchdog_delay_seconds: int = 60):
-        """Initialize sync manager.
-
-        Args:
-            srv: RetroGameServer instance
-            lcl: LocalLibrary instance
-            romm_user: RommUser credentials
-            watchdog_delay_seconds: Delay before executing sync after file changes
+    def __init__(self, srv: RetroGameServer, lcl: LocalLibrary):
+        """Initialize. Called in main to kick off the watchdog sync.
         """
-        self.orchestrator = SyncOrchestrator(lcl, srv, romm_user)
-        self.watchdog_delay_seconds = watchdog_delay_seconds
+        self.orchestrator = SyncOrchestrator(lcl, srv)
+        self.watchdog_delay_seconds = get_config().WATCHDOG_DELAY_SECONDS
         self.pending_events: List[ValidEvent] = []
         self.event_lock = threading.Lock()
         self.timer_thread = None
@@ -300,10 +331,41 @@ class SyncManager:
                 self.timer_thread.cancel()
 
 
+
+class PeriodicSyncManager:
+    """Manages periodic sync, performing full syncs at regular intervals."""
+
+    def __init__(self, srv: RetroGameServer, lcl: LocalLibrary):
+        self.orchestrator = SyncOrchestrator(lcl, srv)
+        self.sync_interval = get_config().SYNC_INTERVAL_SECONDS
+        self.stop_event = threading.Event()
+
+    def run(self):
+        """Run the periodic sync loop. Blocks until stop() is called."""
+        try:
+            while not self.stop_event.is_set():
+                logger.info("Running periodic sync...")
+                try:
+                    t0 = tpc()
+                    self.orchestrator.full_sync()
+                    t1 = tpc()
+                    logger.info(f"Periodic sync completed in {round(t1 - t0, 2)} s.")
+                except Exception as e:
+                    logger.error(f"Sync failed: {e}")
+
+                self.stop_event.wait(timeout=int(self.sync_interval))
+        finally:
+            logger.info("Exiting ('Periodic' sync mode)...")
+
+    def stop(self):
+        """Signal the sync loop to stop."""
+        self.stop_event.set()
+
+
 class FileChangeHandler(FileSystemEventHandler):
     """Handle filesystem events and trigger sync operations. Modified from watchdog library"""
 
-    def __init__(self, sync_manager: SyncManager):
+    def __init__(self, sync_manager: WatchdogSyncManager):
         self.sync_manager = sync_manager
 
     def _handle_event(self, event):

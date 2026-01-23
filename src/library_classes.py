@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 import polars as pl
 from loguru import logger
 import re
+import yaml
 
 # program imports
 from .games_class import Game
@@ -15,11 +16,73 @@ from .config import METADATA_FILE_FILTERS, get_config
 class RetroGameServer:
     def __init__(self, library):
         self.library: pl.DataFrame = library
+        self.PLATFORM_MAP: Optional[dict] = None
 
+    def _load_platform_mapping(self) -> None:
+        """Load platform mapping from YAML file.
+
+        Expected format:
+            romm_platform_slug:
+              - local_folder_name_1
+              - local_folder_name_2
+
+        Falls back to empty dictionary on errors, which means exact platform slug matching only.
+        """
+        try:
+            with open(get_config().PLATFORM_MAP_PATH, 'r') as f:
+                data = yaml.safe_load(f)
+
+            if data is None:
+                # Empty file is valid
+                self.PLATFORM_MAP = {}
+                return
+
+            if not isinstance(data, dict):
+                logger.error(f"Platform mapping must be a dictionary, got {type(data).__name__}. Falling back to exact matching only.")
+                self.PLATFORM_MAP = {}
+                return
+
+            # Validate structure: each value should be a list of strings
+            for romm_slug, local_names in data.items():
+                if not isinstance(local_names, list):
+                    logger.error(f"Platform '{romm_slug}' must map to a list of strings, got {type(local_names).__name__}. Falling back to exact matching only.")
+                    self.PLATFORM_MAP = {}
+                    return
+                if not all(isinstance(name, str) for name in local_names):
+                    logger.error(f"Platform '{romm_slug}' contains non-string values. Falling back to exact matching only.")
+                    self.PLATFORM_MAP = {}
+                    return
+
+            self.PLATFORM_MAP = data
+
+        except yaml.YAMLError as e:
+            logger.error(f"Failed to parse platform mapping YAML: {e}. Falling back to exact matching only.")
+            self.PLATFORM_MAP = {}
+        except IOError as e:
+            logger.error(f"Failed to read platform mapping file: {e}. Falling back to exact matching only.")
+            self.PLATFORM_MAP = {}
+
+    def get_romm_platform(self, local_platform_name: str) -> str | None:
+        """Get the ROMM platform slug for a local platform folder name.
+
+        Args:
+            local_platform_name: The local folder name (e.g., "gba", "snes")
+
+        Returns:
+            The ROMM platform slug if found, None otherwise.
+            Match is case-insensitive.
+        """
+        local_platform_lower = local_platform_name.lower()
+        for romm_slug, local_names in self.PLATFORM_MAP.items():
+            if any(name.lower() == local_platform_lower for name in local_names):
+                return romm_slug
+        
+        return None
+    
     @classmethod
-    def initialize_romm_map(cls,
+    def build_romm_library(cls,
                             romm_user: RommUser):
-        """Use this factory method to initialize the sync with a snapshot of the ROMM database.
+        """Factory method to instantiate a RetroGameServerClass with romm library info.
 
         Args:
             romm_url: ROMM API base URL. Defaults to config.ROMM_URL
@@ -37,8 +100,7 @@ class RetroGameServer:
         # represent the library as a dataframe for ease of use
         library = pl.from_dicts(data['items'])
 
-        # Keep only columns we actually use to reduce memory footprint
-        # Core columns needed for matching and display
+        # only keep the columns we will use
         essential_columns = [
             'id', 'name', 'platform_slug', 'platform_id',
             'fs_name', 'fs_size_bytes', 'platform_display_name'
@@ -194,17 +256,25 @@ class LocalLibrary:
     def match_to_romm(self,
                       games: List[Game],
                       romm_library: RetroGameServer) -> None:
-        """Match local games to RetroGameServer library entries.
-
+        """Match local games to RetroGameServer library entries. Allows passing an arbitrary list of games for incremental state updates.
         Uses platform information to narrow search space for efficiency.
         Currently performs exact name matching within platform. Future enhancement: fuzzy matching.
         """
         for game in games:
             # Narrow search to platform if available
             if game.platform:
-                platform_games = romm_library.library.filter(
-                    pl.col('platform_slug') == game.platform
-                )
+
+                matched_romm_slug = romm_library.get_romm_platform(game.platform)
+                logger.debug(f"{game.name} -- Matched platform {game.platform} to slug {matched_romm_slug}.")
+                if matched_romm_slug is not None:
+                    platform_games = romm_library.library.filter(
+                        pl.col('platform_slug') == matched_romm_slug
+                    )
+                else:  # fallback to directly check romm slug vs detected game.platform
+                    platform_games = romm_library.library.filter(
+                        pl.col('platform_slug') == game.platform
+                    )
+                
                 # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
                 # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
                 # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
@@ -213,21 +283,18 @@ class LocalLibrary:
                 matching_rows = platform_games.filter(
                     pl.col('fs_name').str.contains(game.name, literal=True)
                 )
-            else:
-                if get_config().ALLOW_SKIP_PLATFORM_VERIFICATION:
-                    # Fallback to searching all games if platform not available
-                    matching_rows = romm_library.library.filter(
-                        pl.col('fs_name') == game.name)
-                else:
-                    logger.warning(f"Could not match {game.name} with platform '{game.platform}' to ROMM server. Check PLATFORM_MAPPING environment variable.")
 
-            if matching_rows.height > 0:
-                # Convert DataFrame row to dictionary and populate ROMM data
-                romm_row = matching_rows.row(0, named=True)
-                game.set_romm_data(romm_row)
+                if matching_rows.height > 0:
+                    # Convert DataFrame row to dictionary and populate ROMM data
+                    romm_row = matching_rows.row(0, named=True)
+                    game.set_romm_data(romm_row)
+                else:
+                    # Game not found in ROMM library
+                    logger.warning(f"Could not match {game.name} with platform '{game.platform}' to ROMM server. Check your platform_mapping.yaml and verify that this game is on the ROMM server.")
+                    game.is_matched = False
+
             else:
-                # Game not found in ROMM library
-                game.is_matched = False
+                logger.warning(f"Failed to match {game.name}. Games must be organized by platform/content directory. Check your local library structure. ")
 
     @staticmethod
     def _load_local_saves_and_states(new_game: Game, file_info: dict):
