@@ -31,6 +31,7 @@ class RetroGameServer:
         """
         try:
             platform_map_path = get_config().PLATFORM_MAP_PATH
+            logger.debug(f"Attempting to load {str(platform_map_path)}")
             
             if platform_map_path is not None:
                 with open(platform_map_path, 'r') as f:
