@@ -1,8 +1,15 @@
 # Platform mapping for ROMM Sync
 # The entry is the folder "slug" expected by romm and the list below is all the library folder names that will match to it.
-#
-# Add your own to the list under each platform if needed. By default, this list attempts to cover for common slugs used in MinUI/NextUI and Knulli.
-# The match is not case-sensitive.
+# If there is a library slug not in this list, it will attempt to match to the romm slug directly. So,
+#   **if your platform folder name already matches romm, you don't need to touch this**, even if it's not in this yaml!
+
+# Add your own to the list if needed, follwing the format:
+# <romm slug>:
+#   - <library folder name>
+# By default, this list attempts to cover for some common systems and alternative slugs used in MinUI/NextUI and Knulli.
+# It is NOT exhaustive. Please see https://docs.romm.app/4.5.0/Platforms-and-Players/Supported-Platforms/.
+
+# Local library matches are not case-sensitive. Romm slugs are lowercase only (and its match is case-sensitive, so take care to match case for the romm slug)
 
 # === HANDHELD CONSOLES ===
 gb:
@@ -19,17 +26,9 @@ nds:
   - nds
   - ds
 
-dsi:
-  - dsi
-
-lynx:
-  - lynx
-
 gamegear:
   - gamegear
 
-swancrystal:
-  - swancrystal
 
 virtualboy:
   - virtualboy
@@ -61,11 +60,6 @@ atari5200:
 atari7800:
   - atari7800
 
-colecovision:
-  - colecovision
-  - colekovision
-  - coleco
-
 intellivision:
   - intellivision
 
@@ -87,7 +81,6 @@ turbografx-cd:
 
 fds:
   - fds
-
 # === 32/64-BIT ERA (3D) ===
 n64:
   - n64
@@ -107,17 +100,6 @@ dc:
 
 jaguar:
   - jaguar
-
-3do:
-  - 3do
-  - 3d0
-
-panasonic-m2:
-  - panasonic-m2
-  - m2
-
-nuon:
-  - nuon
 
 jaguar-cd:
   - jaguar-cd
@@ -142,7 +124,6 @@ new-nintendo-3ds:
 # === MODERN CONSOLES ===
 ps2:
   - ps2
-  - playstation_2
 
 ps3:
   - ps3
@@ -192,18 +173,6 @@ dos:
   - dos
   - ms-dos
 
-c64:
-  - c64
-
-appleii:
-  - appleii
-
-amiga:
-  - amiga
-
-msx:
-  - msx
-
 msx2:
   - msx2
   - msx-2
@@ -211,15 +180,6 @@ msx2:
 msx2plus:
   - msx2plus
   - msx2+
-
-atari-st:
-  - atari-st
-
-atari8bit:
-  - atari8bit
-
-bbcmicro:
-  - bbcmicro
 
 c128:
   - c128
@@ -237,19 +197,6 @@ commodore-pgx:
   - commodore-pgx
   - pgx
 
-fm-7:
-  - fm-7
-  - fm7
-  - fm-7
-
-fm-towns:
-  - fm-towns
-
-cpm:
-  - cpm
-  - cp/m
-  - cp-m
-
 # === OTHER/SPECIAL PLATFORMS ===
 scummvm:
   - scummvm
@@ -260,31 +207,10 @@ steam-vr:
   - steam-vr
   - steamvr
 
-# === MODERN PLATFORMS/MOBILE ===
-android:
-  - android
-
-ios:
-  - ios
-  - iphone
-  - ipad
-
-windows:
-  - windows
-  - pc
-  - win
-
-linux:
-  - linux
-
-mac:
-  - mac
-  - macos
-
-web:
-  - web
-  - browser
-  - html5
+pico:
+  - pico
+  - pico8
+  - pico-8
 
 # === HANDHELD/ARCADE SYSTEMS ===
 neo-geo-pocket:
@@ -295,129 +221,10 @@ neo-geo-pocket-color:
   - neo-geo-pocket-color
   - ngpc
 
-neo-geo-x:
-  - neo-geo-x
-
 game-and-watch:
   - game-and-watch
   - gaw
 
-pokemon-mini:
-  - pokemon-mini
-
-evercade:
-  - evercade
-
-gp32:
-  - gp32
-
-gp2x:
-  - gp2x
-
 gp2x-wiz:
   - gp2x-wiz
   - wiz
-
-pandora:
-  - pandora
-
-ouya:
-  - ouya
-
-naomi:
-  - naomi
-
-naomi2:
-  - naomi2
-
-hyperneo-64:
-  - hyperneo-64
-
-# === OTHER SYSTEMS ===
-astrocade:
-  - astrocade
-
-colecoadam:
-  - colecoadam
-  - adam
-
-fairchild-channel-f:
-  - fairchild-channel-f
-  - channelf
-
-odyssey-2:
-  - odyssey-2
-
-intellivision-amico:
-  - intellivision-amico
-  - amico
-
-vectrex:
-  - vectrex
-
-vic-1001:
-  - vic-1001
-
-creatiVision:
-  - creativision
-
-laser-200:
-  - laser-200
-
-megaduck:
-  - megaduck
-
-hartung-game-master:
-  - hartung-game-master
-
-galaxy-game:
-  - galaxy-game
-
-palm-os:
-  - palm-os
-
-onlive:
-  - onlive
-
-stadia:
-  - stadia
-
-# === ADDITIONAL SYSTEMS ===
-famicom:
-  - famicom
-
-nes-jp:
-  - nes-jp
-
-zx-spectrum:
-  - zx-spectrum
-  - spectrum
-
-commodore-pet:
-  - commodore-pet
-  - pet
-
-tandy-coco:
-  - tandy-coco
-  - coco
-
-timex-sinclaire:
-  - timex-sinclaire
-
-atari-st:
-  - atari-st-alt
-
-byte:
-  - byte
-
-odyssey:
-  - odyssey
-
-studio-ii:
-  - studio-ii
-
-mattel-auto-race:
-  - mattel-auto-race
-
-snes-jr:
-  - snes-jr
