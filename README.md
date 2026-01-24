@@ -11,7 +11,7 @@ This all started when I set up Syncthing between my devices with Retroarch-based
 ## What you'll need:
 - A server or NAS of some kind that hosts a central file sync location. I use Syncthing, but technically it could be anything.
 - A self hosted instance of Romm that is accessible by the machine on which this app is deployed.
-- Docker to deploy the app.
+- Docker to deploy the app and basic knowledge of configuring environment variables for a docker compose file.
 
 ## What this does:
 1. Gaming devices sync save files to a central location via Syncthing.
@@ -52,7 +52,7 @@ I tried to make this as hands-off of a setup as possible but I'm a bit of a noob
 Clone or download+unzip this repo onto the machine you'll be running it on.
 
 ## Configure
-Set the following variables in `.env.example`:
+Set the following variables in `.env.example` and then rename/duplicate the file to `.env`.
 
 ### ROMM Configuration
 
@@ -129,4 +129,7 @@ docker compose up -d
 ```
 
 That oughta be it...now it should just work™ and you should soon see all your saves and states in Romm!
+
+I know the RomM developers are working on what will surely be a much more elegant solution to save syncing, but in the meantime I wrote this little app that will push all your saves and states to RomM. This project is very much just for fun so don't judge *too* harshly, please!
+
 
