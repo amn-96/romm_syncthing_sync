@@ -30,8 +30,6 @@ It *does not* sort states by core, though I had some leftover different cores fo
 
 The implicit assumption here is that the game files (ROM, with one M) on your device are *already* the same files as the ROM's in your Romm library. Set up your Romm library before trying to run this app. A tip that really helped me is that Romm allows you to map your *local* directory names to *their supported platform names* ("slugs") to make library management easier. [See the docs here.](https://docs.romm.app/latest/Getting-Started/Configuration-File/?h=platform+name#custom-folder-names) 
 
-As far as I can tell, Retroarch, Batocera (Knulli), and EmulationStation share standard content directory naming schemes and I haven't run into any sync issues (yet!). This is one of the areas I'm looking to make improvements on so I welcome feedback.
-
 ### This is NOT a Romm Client. 
 
 It's just a one way push to Romm from Syncthing with the expectation that you use a real romm client to pull from Romm to your handheld. (see Grout, for example). This just makes it easier to have access to Romm's library organization niceties if you have some devices that don't support a Romm client.
@@ -106,14 +104,21 @@ For this, use:
 
 **STATE_SYNC_FOLDER**: local directory with state files (.state etc.)
 
+#### Platform Mapping
+A .yaml file is included that you can edit to map your platform directories (i.e snes, nds,...) to the platform "slug" that romm expects. The app forces a match by game platform, similar to how ROMM's uploads work, so this mapping file is required if the platform folder names in your library are different from ROMM's. By default, this list attempts to cover for some common systems and alternative slugs used in MinUI/NextUI and Knulli, but it is NOT exhaustive so keep an eye on the logs if you're not seeing some games show up. 
+
+See https://docs.romm.app/4.5.0/Platforms-and-Players/Supported-Platforms/ for ROMM's supported platforms.
+
+
 ### SYNC_MODE: 
 Two options here:
 - "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the `SYNC_FOLDER`
    - `WATCHDOG_DELAY_SECONDS` is the amount of time it'll wait for a period of no file system activity once a change is detected. Default is 60 seconds. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
-      - Highly recommend leaving it at 60s.
 - "periodic": runs the full sync between your local library and romm library every `SYNC_INTERVAL_SECONDS`. 
    - Simpler but if you have a large library, syncs may take a while because it queries the ROMM API for every single save and state you have.
-   - I have about 40 different games synced with 1 save and a couple states, running on the same machine as the instance, and a full sync with no changes takes ~20 seconds.
+   - I have about 40 different games synced with 1 save and a couple states each, running on the same machine as the instance, and a full sync with no changes takes ~20 seconds.
+
+The default is the incremental sync and I'd stick to that.
 
 ## Spin it up!
 Run the following from a terminal.
@@ -122,8 +127,6 @@ cd {YOUR_CLONE_DIRECTORY}
 docker compose build
 docker compose up -d
 ```
-
-If you run just `docker compose up`, it'll start up in the foreground and show you all the logs as the app starts up.
 
 That oughta be it...now it should just work™ and you should soon see all your saves and states in Romm!
 
