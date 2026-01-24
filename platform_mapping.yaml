@@ -8,40 +8,31 @@
 gb:
   - gb
   - game_boy
-  - game boy
 
 gbc:
   - gbc
-  - gameboy_color
-  - gb color
 
 gba:
   - gba
-  - game boy advance
-  - gameboy advance
 
 nds:
   - nds
-  - nintendo ds
   - ds
+
+dsi:
+  - dsi
 
 lynx:
   - lynx
-  - atari lynx
 
 gamegear:
   - gamegear
-  - game gear
-  - sega game gear
 
 swancrystal:
   - swancrystal
-  - wonderswan
-  - wonderswan color
 
 virtualboy:
   - virtualboy
-  - virtual boy
   - vb
 
 # === 8-16 BIT HOME CONSOLES ===
@@ -58,20 +49,17 @@ genesis:
   - md
   - megadrive
 
+segacd:
+  - segacd
+
 atari2600:
   - atari2600
-  - atari 2600
-  - 2600
 
 atari5200:
   - atari5200
-  - atari 5200
-  - 5200
 
 atari7800:
   - atari7800
-  - atari 7800
-  - 7800
 
 colecovision:
   - colecovision
@@ -83,34 +71,26 @@ intellivision:
 
 neogeoaes:
   - neogeoaes
-  - neo geo aes
-  - neo geo
-  - neogeo aes
   - neogeo
 
 neogeomvs:
   - neogeomvs
-  - neo geo mvs
-  - neogeo mvs
 
 turbografx-cd:
   - turbografx-cd
   - turbografx
-  - turbo grafx
   - turbografx-16
-  - pc engine
+  - pc-engine
+  - pcengine
   - tg16
   - tg-16
 
 fds:
   - fds
-  - famicom disk system
-  - disk system
 
 # === 32/64-BIT ERA (3D) ===
 n64:
   - n64
-  - nintendo 64
 
 psx:
   - psx
@@ -120,43 +100,82 @@ psx:
 
 saturn:
   - saturn
-  - sega saturn
-  - dreamcast
+
+dc:
   - dc
+  - dreamcast
+
+jaguar:
+  - jaguar
+
+3do:
+  - 3do
+  - 3d0
+
+panasonic-m2:
+  - panasonic-m2
+  - m2
+
+nuon:
+  - nuon
+
+jaguar-cd:
+  - jaguar-cd
 
 ngc:
   - ngc
   - gc
   - gamecube
-  - nintendo gamecube
 
 wii:
   - wii
-  - nintendo wii
+
+wiiu:
+  - wiiu
+
+3ds:
+  - 3ds
+
+new-nintendo-3ds:
+  - new-nintendo-3ds
 
 # === MODERN CONSOLES ===
 ps2:
   - ps2
-  - playstation 2
   - playstation_2
 
 ps3:
   - ps3
-  - playstation 3
+
+ps4:
+  - ps4
+
+ps5:
+  - ps5
+
+psp:
+  - psp
+
+psvita:
+  - psvita
 
 xbox:
   - xbox
-  - original xbox
   - original_xbox
 
 xbox360:
   - xbox360
-  - xbox 360
   - xbox_360
+
+xbox-one:
+  - xbox-one
+  - xboxone
+
+xbox-series-x-and-s:
+  - xbox-series-x-and-s
 
 switch:
   - switch
-  - nintendo switch
   - nintendo_switch
 
 # === ARCADE ===
@@ -164,39 +183,72 @@ arcade:
   - arcade
   - mame
   - fba
-  - final burn alpha
 
 neogeoarcade:
   - neogeoarcade
-  - neo geo arcade
-  - neo geo aes arcade
 
 # === COMPUTER SYSTEMS ===
 dos:
   - dos
   - ms-dos
-  - ibm pc
 
 c64:
   - c64
-  - commodore 64
 
 appleii:
   - appleii
-  - apple ii
-  - apple 2
-  - apple iic
-  - apple iie
-  - apple iigs
 
 amiga:
   - amiga
-  - amiga 500
-  - amiga 1000
-  - amiga 1200
 
 msx:
   - msx
+
+msx2:
+  - msx2
+  - msx-2
+
+msx2plus:
+  - msx2plus
+  - msx2+
+
+atari-st:
+  - atari-st
+
+atari8bit:
+  - atari8bit
+
+bbcmicro:
+  - bbcmicro
+
+c128:
+  - c128
+  - commodore128
+
+vic-20:
+  - vic-20
+  - vic20
+
+commodore-cdtv:
+  - commodore-cdtv
+  - cdtv
+
+commodore-pgx:
+  - commodore-pgx
+  - pgx
+
+fm-7:
+  - fm-7
+  - fm7
+  - fm-7
+
+fm-towns:
+  - fm-towns
+
+cpm:
+  - cpm
+  - cp/m
+  - cp-m
 
 # === OTHER/SPECIAL PLATFORMS ===
 scummvm:
@@ -206,5 +258,166 @@ scummvm:
 
 steam-vr:
   - steam-vr
-  - steam vr
   - steamvr
+
+# === MODERN PLATFORMS/MOBILE ===
+android:
+  - android
+
+ios:
+  - ios
+  - iphone
+  - ipad
+
+windows:
+  - windows
+  - pc
+  - win
+
+linux:
+  - linux
+
+mac:
+  - mac
+  - macos
+
+web:
+  - web
+  - browser
+  - html5
+
+# === HANDHELD/ARCADE SYSTEMS ===
+neo-geo-pocket:
+  - neo-geo-pocket
+  - ngp
+
+neo-geo-pocket-color:
+  - neo-geo-pocket-color
+  - ngpc
+
+neo-geo-x:
+  - neo-geo-x
+
+game-and-watch:
+  - game-and-watch
+  - gaw
+
+pokemon-mini:
+  - pokemon-mini
+
+evercade:
+  - evercade
+
+gp32:
+  - gp32
+
+gp2x:
+  - gp2x
+
+gp2x-wiz:
+  - gp2x-wiz
+  - wiz
+
+pandora:
+  - pandora
+
+ouya:
+  - ouya
+
+naomi:
+  - naomi
+
+naomi2:
+  - naomi2
+
+hyperneo-64:
+  - hyperneo-64
+
+# === OTHER SYSTEMS ===
+astrocade:
+  - astrocade
+
+colecoadam:
+  - colecoadam
+  - adam
+
+fairchild-channel-f:
+  - fairchild-channel-f
+  - channelf
+
+odyssey-2:
+  - odyssey-2
+
+intellivision-amico:
+  - intellivision-amico
+  - amico
+
+vectrex:
+  - vectrex
+
+vic-1001:
+  - vic-1001
+
+creatiVision:
+  - creativision
+
+laser-200:
+  - laser-200
+
+megaduck:
+  - megaduck
+
+hartung-game-master:
+  - hartung-game-master
+
+galaxy-game:
+  - galaxy-game
+
+palm-os:
+  - palm-os
+
+onlive:
+  - onlive
+
+stadia:
+  - stadia
+
+# === ADDITIONAL SYSTEMS ===
+famicom:
+  - famicom
+
+nes-jp:
+  - nes-jp
+
+zx-spectrum:
+  - zx-spectrum
+  - spectrum
+
+commodore-pet:
+  - commodore-pet
+  - pet
+
+tandy-coco:
+  - tandy-coco
+  - coco
+
+timex-sinclaire:
+  - timex-sinclaire
+
+atari-st:
+  - atari-st-alt
+
+byte:
+  - byte
+
+odyssey:
+  - odyssey
+
+studio-ii:
+  - studio-ii
+
+mattel-auto-race:
+  - mattel-auto-race
+
+snes-jr:
+  - snes-jr

@@ -219,5 +219,6 @@ I used AI assistance in the following ways:
 - quickly get me going with sample patterns for libraries I was unfamiliar with (mainly: `pytest.mock`, `watchdog`, `loguru`, and `requests`) before I did the implementation myself. 
 - documentation, which I proofread and sanitized/edited as needed
 - autocomplete
+- help generate the platform mapping.
 
 The code is 100% mine (for better or worse).
