@@ -39,7 +39,7 @@ class Config:
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
                  sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
                  sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
-                 platform_map: Path = Path("/config/platform_mapping.yaml"),
+                 platform_map: Path | None = Path("/config/platform_mapping.yaml") if os.getenv("PLATFORM_MAP_FILE") else None,
                  log_level: str = os.getenv("LOG_LEVEL", "INFO"),
                  dry_run: bool = os.getenv("DRY_RUN", "false").lower() == "true",
                  enable_metrics: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true"):
@@ -49,23 +49,22 @@ class Config:
         self.ROMM_CREDENTIALS: RommUser = romm_credentials
 
         # Sync Configuration
-        self.SAVE_SYNC_DIR = save_sync_dir
-        self.STATE_SYNC_DIR = state_sync_dir
-        self.ALL_SYNC_DIR = all_sync_dir
-        self.SYNC_MODE = sync_mode
-        self.SYNC_INTERVAL_SECONDS = sync_interval_seconds
-        self.WATCHDOG_DELAY_SECONDS = watchdog_delay_seconds
-        self.PLATFORM_MAP_PATH = platform_map
-        self.PLATFORM_MAP: Dict[str, List[str]] = {}
+        self.SAVE_SYNC_DIR: Path | None = save_sync_dir
+        self.STATE_SYNC_DIR: Path | None = state_sync_dir
+        self.ALL_SYNC_DIR: Path | None = all_sync_dir
+        self.SYNC_MODE: str = sync_mode
+        self.SYNC_INTERVAL_SECONDS: int = sync_interval_seconds
+        self.WATCHDOG_DELAY_SECONDS: int = watchdog_delay_seconds
+        self.PLATFORM_MAP_PATH: Path | None = platform_map
 
         # Logging Configuration
-        self.LOG_LEVEL = log_level
-        self.LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        self.LOG_LEVEL: str = log_level
+        self.LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
         # Initialize logging with the specified level
         LoggingConfig.setup(log_level=self.LOG_LEVEL)
 
-        # Feature Flags
+        # Feature Flags -- not implemented yet/may not be. Just leaving these here.
         self.DRY_RUN = dry_run
         self.ENABLE_METRICS = enable_metrics
 
@@ -106,9 +105,10 @@ class Config:
             errors.append(f"ALL_SYNC_DIR does not exist: {self.ALL_SYNC_DIR}")
 
         # Validate platform mapping file (optional - will fallback to exact matching)
-        if not self.PLATFORM_MAP_PATH.exists():
+        if (self.PLATFORM_MAP_PATH is not None) and (not self.PLATFORM_MAP_PATH.exists()):
             logger.warning(f"Platform mapping file not found: {self.PLATFORM_MAP_PATH}. Will use exact platform slug matching only.")
-
+            self.PLATFORM_MAP_PATH = None  # this allows NO platform map path
+        
         if errors:
             raise ValueError(f"Configuration errors: {', '.join(errors)}")
 

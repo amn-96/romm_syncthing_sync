@@ -14,11 +14,12 @@ from .config import METADATA_FILE_FILTERS, get_config
 
 
 class RetroGameServer:
-    def __init__(self, library):
+    def __init__(self, library, platform_map):
         self.library: pl.DataFrame = library
-        self.PLATFORM_MAP: Optional[dict] = None
+        self.PLATFORM_MAP: dict = platform_map
 
-    def _load_platform_mapping(self) -> None:
+    @staticmethod
+    def _load_platform_mapping() -> dict | None:
         """Load platform mapping from YAML file.
 
         Expected format:
@@ -29,38 +30,46 @@ class RetroGameServer:
         Falls back to empty dictionary on errors, which means exact platform slug matching only.
         """
         try:
-            with open(get_config().PLATFORM_MAP_PATH, 'r') as f:
-                data = yaml.safe_load(f)
+            platform_map_path = get_config().PLATFORM_MAP_PATH
+            
+            if platform_map_path is not None:
+                with open(platform_map_path, 'r') as f:
+                    data = yaml.safe_load(f)
 
             if data is None:
-                # Empty file is valid
-                self.PLATFORM_MAP = {}
-                return
+                # safe fallback if the file is empty
+                raise ValueError("Platform mapping file is empty.")
 
             if not isinstance(data, dict):
-                logger.error(f"Platform mapping must be a dictionary, got {type(data).__name__}. Falling back to exact matching only.")
-                self.PLATFORM_MAP = {}
-                return
+                # safe fallback if invalid yaml
+                raise ValueError(f"Platform mapping must be a dictionary, got {type(data).__name__}.")
 
-            # Validate structure: each value should be a list of strings
+            # Validate structure: each value should be a list of strings (safe fallbacks again)
             for romm_slug, local_names in data.items():
                 if not isinstance(local_names, list):
-                    logger.error(f"Platform '{romm_slug}' must map to a list of strings, got {type(local_names).__name__}. Falling back to exact matching only.")
-                    self.PLATFORM_MAP = {}
-                    return
-                if not all(isinstance(name, str) for name in local_names):
-                    logger.error(f"Platform '{romm_slug}' contains non-string values. Falling back to exact matching only.")
-                    self.PLATFORM_MAP = {}
-                    return
+                    raise ValueError(f"Platform '{romm_slug}' must map to a list of strings, got {type(local_names).__name__}.")
 
-            self.PLATFORM_MAP = data
+                if not all(isinstance(name, str) for name in local_names):
+                    raise ValueError(f"Platform '{romm_slug}' contains non-string values.")
+
+            platform_map = data
 
         except yaml.YAMLError as e:
-            logger.error(f"Failed to parse platform mapping YAML: {e}. Falling back to exact matching only.")
-            self.PLATFORM_MAP = {}
+            logger.error(f"Failed to parse platform mapping YAML: {e}. Falling back to exact matching.")
+            platform_map = {}
         except IOError as e:
-            logger.error(f"Failed to read platform mapping file: {e}. Falling back to exact matching only.")
-            self.PLATFORM_MAP = {}
+            logger.error(f"Failed to read platform mapping file: {e}. Falling back to exact matching.")
+            platform_map = {}
+        except ValueError as e:
+            logger.error(f"{e} Falling back to exact matching.")
+            platform_map = {}
+        except Exception as e:
+            logger.error(f"Unexpected error while trying to read platform mapping file: {e}. Falling back to exact matching.")
+            platform_map = {}
+        
+        finally:
+            return platform_map
+
 
     def get_romm_platform(self, local_platform_name: str) -> str | None:
         """Get the ROMM platform slug for a local platform folder name.
@@ -116,7 +125,9 @@ class RetroGameServer:
             pl.col('platform_slug').cast(pl.Categorical)
         )
 
-        return cls(library=library)
+        platform_map = cls._load_platform_mapping()
+
+        return cls(library=library, platform_map=platform_map)
 
     def count(self):
         return len(self.library)

@@ -11,4 +11,4 @@ services:
       # - ${ALL_SYNC_FOLDER}:/syncdata:ro  # Uncomment if saves and states in the same folder.
       - ${SAVE_SYNC_FOLDER}:/syncdata/saves:ro
       - ${STATE_SYNC_FOLDER}:/syncdata/states:ro
-      - ./platform_mapping.yaml:/config/platform_mapping.yaml  # do not change the target bind mount or the filename!!
+      - ${PLATFORM_MAP_FILE}:/config/platform_mapping.yaml  # do not change the target bind mount or the filename!!
