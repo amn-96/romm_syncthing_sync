@@ -91,7 +91,7 @@ class RetroGameServer:
     
     @classmethod
     def build_romm_library(cls,
-                            romm_user: RommUser):
+                           romm_user: RommUser):
         """Factory method to instantiate a RetroGameServerClass with romm library info.
 
         Args:
@@ -101,24 +101,25 @@ class RetroGameServer:
         """
         data = romm_user.get_full_library()
 
-        # Strip metadata fields before normalization to reduce memory footprint
-        unwanted_fields = ['metadatum', 'igdb_metadata', 'hasheous_metadata', 'moby_metadata']
+        # define the keys of the json response we want early
+        library_columns = {
+            'id': pl.Int64,
+            'name': pl.String,
+            'platform_slug': pl.String,
+            'platform_id': pl.Int64,
+            'fs_name': pl.String,
+            'fs_size_bytes': pl.Int64,
+            'platform_display_name': pl.String
+        }
+
+        # Strip all fields except essential ones before processing with polars
+        # Make sure that the data being processed is ONLY the necessary data.
+        filtered_items = []
         for item in data['items']:
-            for field in unwanted_fields:
-                item.pop(field, None)
+            filtered_item = {k: v for k, v in item.items() if k in library_columns.keys()}
+            filtered_items.append(filtered_item)
 
-        # represent the library as a dataframe for ease of use
-        library = pl.from_dicts(data['items'])
-
-        # only keep the columns we will use
-        essential_columns = [
-            'id', 'name', 'platform_slug', 'platform_id',
-            'fs_name', 'fs_size_bytes', 'platform_display_name'
-        ]
-
-        # Filter to only essential columns that exist in the dataframe
-        available_columns = [col for col in essential_columns if col in library.columns]
-        library = library.select(available_columns)
+        library = pl.from_dicts(filtered_items, schema=library_columns)
 
         # Each game stores its non-unique platform slug, so use categorical dtype
         # avoids repeating the same string for every game on a given platform...might make a difference for big libraries

@@ -11,7 +11,7 @@ This all started when I set up Syncthing between my devices with Retroarch-based
 ## What you'll need:
 - A server or NAS of some kind that hosts a central file sync location. I use Syncthing, but technically it could be anything.
 - A self hosted instance of Romm that is accessible by the machine on which this app is deployed.
-- Docker to deploy the app and basic knowledge of configuring environment variables for a docker compose file.
+- Docker to deploy the app.
 
 ## What this does:
 1. Gaming devices sync save files to a central location via Syncthing.
@@ -52,7 +52,7 @@ I tried to make this as hands-off of a setup as possible but I'm a bit of a noob
 Clone or download+unzip this repo onto the machine you'll be running it on.
 
 ## Configure
-Set the following variables in `.env.example` and then rename/duplicate the file to `.env`.
+Set the following variables in `.env.example`:
 
 ### ROMM Configuration
 
@@ -112,7 +112,7 @@ See https://docs.romm.app/4.5.0/Platforms-and-Players/Supported-Platforms/ for R
 
 ### SYNC_MODE: 
 Two options here:
-- "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the `SYNC_FOLDER`
+- "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the sync folders.
    - `WATCHDOG_DELAY_SECONDS` is the amount of time it'll wait for a period of no file system activity once a change is detected. Default is 60 seconds. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
 - "periodic": runs the full sync between your local library and romm library every `SYNC_INTERVAL_SECONDS`. 
    - Simpler but if you have a large library, syncs may take a while because it queries the ROMM API for every single save and state you have.
@@ -129,7 +129,4 @@ docker compose up -d
 ```
 
 That oughta be it...now it should just work™ and you should soon see all your saves and states in Romm!
-
-I know the RomM developers are working on what will surely be a much more elegant solution to save syncing, but in the meantime I wrote this little app that will push all your saves and states to RomM. This project is very much just for fun so don't judge *too* harshly, please!
-
 
