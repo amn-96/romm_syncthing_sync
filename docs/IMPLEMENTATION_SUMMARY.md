@@ -12,7 +12,7 @@ The application runs in a Docker container with the following configuration:
 **Environment Variables** (`.env.example`):
 - ROMM API credentials and configuration
 - Sync mode selection (periodic vs watch)
-- Directory configuration for saves/states
+- Sync directory(ies) configuration.
 - Timing parameters (sync interval, watchdog delay)
 - Platform verification settings
 - Logging configuration
@@ -198,11 +198,11 @@ run_watch_sync()  [romm_sync.py:61]
 
 ## Multiple Sync Folders Implementation
 
-The application supports syncing from multiple directory locations, implemented as `SAVE` and `STATE` separate directories to align with typical retro handheld custom firmware setups. However, the internal logic doesn't differentiate between sources and will capture files from any configured directory, making it possible to define arbitrary directories to sync.
+The application supports syncing from multiple directory locations, implemented as `SAVE` and `STATE` separate directories to align with typical retro handheld custom firmware setups.
 
 **Configuration** ([config.py:34-58](../src/config.py#L34-L58)):
 - Supports two patterns: `(SAVE_SYNC_DIR + STATE_SYNC_DIR)` XOR `ALL_SYNC_DIR`
-- Config validation enforces mutual exclusivity
+- Config validation enforces mutual exclusivity of save+state or combined folder sync.
 - Paths converted to `List[Path]` for internal use
 
 **LocalLibrary Processing** ([library_classes.py:167](../src/library_classes.py#L167)):
