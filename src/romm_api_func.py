@@ -1,9 +1,12 @@
 import os
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import List, Dict, TYPE_CHECKING
 import requests
 from requests.auth import HTTPBasicAuth
 from loguru import logger
+
+if TYPE_CHECKING:
+    from src.games_class import SaveFile, SaveState
 
 
 class RommSaves:
@@ -34,15 +37,10 @@ class RommSaves:
         return response.json()
 
     def add(self,
-            local_filepath: str | Path,
+            obj: 'SaveFile',
             rom_id: int):
-        """Upload a new save file to ROMM.
-
-        Args:
-            local_filepath: LOCAL LIBRARY PATH to the save file
-            rom_id: ROMM ROM ID
-        """
-        local_filepath = Path(local_filepath)
+        """Upload a new save file to ROMM. Pulls the relevant info from the SaveFile object."""
+        local_filepath: Path = obj.path
 
         if not local_filepath.exists():
             logger.error(f"Save file not found: {local_filepath}")
@@ -63,20 +61,19 @@ class RommSaves:
             return response.json()
 
     def update(self,
-               local_filepath: str | Path,
+               obj: 'SaveFile',
                rom_id: int,
                id: int) -> Dict:
         """Update an existing save file in ROMM.
 
         Args:
             local_filepath: LOCAL LIBRARY PATH to the save file
-            rom_id: ROMM ROM ID
-            id: ROMM Save ID (obtained from get() method)
+            id: ROMM Save ID (obtained from get() method). this is ".id" attr for the romm save's instance.
 
         Returns:
             Parsed JSON response from ROMM API
         """
-        local_filepath = Path(local_filepath)
+        local_filepath = obj.path
 
         if not local_filepath.exists():
             logger.error(f"Save file not found: {local_filepath}")
@@ -124,7 +121,7 @@ class RommStates:
         return response.json()
 
     def add(self,
-            local_filepath: str | Path,
+            obj: 'SaveState',
             rom_id: int,
             emulator: str | None = None) -> Dict:
         """Upload a new state file to ROMM.
@@ -136,35 +133,41 @@ class RommStates:
         Returns:
             Parsed JSON response from ROMM API
         """
-        local_filepath = Path(local_filepath)
+        local_filepath = obj.path
+        screenshot = obj.screenshot
 
-        if not local_filepath.exists():
-            logger.error(f"state file not found: {local_filepath}")
-            return {"error": f"state file not found: {local_filepath}"}
+        with open(local_filepath, 'rb') as state_f:
+            files = {'stateFile': (local_filepath.name, state_f)}
 
-        with open(local_filepath, 'rb') as f:
-            files = {'stateFile': (local_filepath.name, f)}
-            params = {'rom_id': rom_id, 'emulator': emulator}
+            if screenshot:
+                screenshot_f = open(screenshot, 'rb')
+                files['screenshotFile'] = (screenshot.name, screenshot_f)
+            else:
+                screenshot_f = None
 
-            url = f"{self.romm_user.url}/api/states/"
-            response = requests.post(
-                url,
-                auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                params=params,
-                files=files
-            )
-            logger.debug(f"POST {url} - {response.status_code}")
-            return response.json()
+            try:
+                url = f"{self.romm_user.url}/api/states/"
+                response = requests.post(
+                    url,
+                    auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
+                    params={'rom_id': rom_id, 'emulator': emulator},
+                    files=files
+                )
+                logger.debug(f"POST {url} - {response.status_code}")
+                return response.json()
+            finally:
+                if screenshot_f:
+                    screenshot_f.close()
 
     def update(self,
-               local_filepath: str | Path,
+               obj: 'SaveState',
                rom_id: int,
                id: int,
                emulator: str | None = None) -> Dict:
         """Update an existing state file in ROMM.
 
         Args:
-            local_filepath: Path to the state file to upload
+            obj: SaveState object containing path and screenshot
             rom_id: ROMM ROM ID
             id: ROMM State ID (obtained from get() method)
             emulator: Optional emulator name
@@ -172,23 +175,30 @@ class RommStates:
         Returns:
             Parsed JSON response from ROMM API
         """
-        local_filepath = Path(local_filepath)
+        local_filepath = obj.path
+        screenshot = obj.screenshot
 
-        if not local_filepath.exists():
-            logger.error(f"state file not found: {local_filepath}")
-            return {"error": f"state file not found: {local_filepath}"}
+        with open(local_filepath, 'rb') as state_f:
+            files = {'stateFile': (local_filepath.name, state_f)}
 
-        with open(local_filepath, 'rb') as f:
-            files = {'stateFile': (local_filepath.name, f)}
+            if screenshot:
+                screenshot_f = open(screenshot, 'rb')
+                files['screenshotFile'] = (screenshot.name, screenshot_f)
+            else:
+                screenshot_f = None
 
-            url = f"{self.romm_user.url}/api/states/{id}"
-            response = requests.put(
-                url,
-                auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                files=files
-            )
-            logger.debug(f"PUT {url} - {response.status_code}")
-            return response.json()
+            try:
+                url = f"{self.romm_user.url}/api/states/{id}"
+                response = requests.put(
+                    url,
+                    auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
+                    files=files
+                )
+                logger.debug(f"PUT {url} - {response.status_code}")
+                return response.json()
+            finally:
+                if screenshot_f:
+                    screenshot_f.close()
 
 
 class RommUser:
@@ -227,19 +237,8 @@ class RommUser:
             self._states = RommStates(self)
         return self._states
 
-
     def _validate_library_response(self, response) -> dict:
-        """Validate and parse ROMM API library response.
-
-        Args:
-            response: requests.Response object from ROMM API
-
-        Returns:
-            Validated data dict with 'items' key
-
-        Raises:
-            RuntimeError: If response is malformed
-        """
+        """Validate and parse ROMM API library response."""
         try:
             data = response.json()
         except ValueError as e:
@@ -257,14 +256,7 @@ class RommUser:
         return data
 
     def get_full_library(self) -> dict:
-        """Gets the full list of ROM's in the ROMM.app database, with arg support for pagination.
-
-        FUTURE OPTIMIZATION: Cache this result with LibraryCache class
-        - Store library JSON with timestamp in cache file
-        - Implement TTL (time-to-live) to avoid fetching on every sync
-        - Only refresh when cache is stale (configurable, default 1 hour)
-        - This method can be expensive with large libraries (many API calls)
-        """
+        """Gets the full list of ROM's in the ROMM.app database, with arg support for pagination."""
 
         all_items = []
         offset = 0  # start offset at 0.

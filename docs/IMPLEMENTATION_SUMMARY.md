@@ -43,7 +43,7 @@ main()  [romm_sync.py:96]
        │    ├─> RetroGameServer.build_romm_library()  [library_classes.py:92]
        │    ├─> LocalLibrary(sync_dirs)  [library_classes.py:167]
        │    ├─> LocalLibrary.build_local_library()  [library_classes.py:338]
-       │    └─> LocalLibrary.match_to_romm()  [library_classes.py:268]
+       │    └─> LibraryScanner.match_to_romm()  [library_classes.py:268]
        └─> Return (app_cfg, srv, lcl)
 
   └─> run_periodic_sync(srv, lcl) OR run_watch_sync(srv, lcl)
@@ -173,10 +173,10 @@ run_watch_sync()  [romm_sync.py:61]
                  │
                  [Wait WATCHDOG_DELAY_SECONDS - debounce timer]
                  │
-                 └─> WatchdogSyncManager.execute_sync()  [sync_orchestrator.py:296]
-                      └─> SyncOrchestrator.watchdog_sync()  [sync_orchestrator.py:190]
+                 └─> WatchdogSyncManager.execute_sync()  [sync_orchestrator.py]
+                      └─> SyncOrchestrator.watchdog_sync()  [sync_orchestrator.py]
                            ├─> RetroGameServer.build_romm_library()  [Refresh ROMM state]
-                           ├─> LocalLibrary.extract_games_from_watchdog_events()  [library_classes.py:450]
+                           ├─> LocalLibrary.update_from_watchdog_events()  [library_classes.py]
                            │    ├─> _detect_game_from_watchdog_event()  [Extract game names]
                            │    ├─> _add_new_game_from_watchdog_event()  [Add new games if needed]
                            │    └─> _rescan_local_saves_and_states()  [Rescan affected games]

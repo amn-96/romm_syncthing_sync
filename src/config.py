@@ -3,7 +3,7 @@ import os
 import sys
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional
 from loguru import logger
 from .romm_api_func import RommUser
 from dotenv import load_dotenv
@@ -38,6 +38,8 @@ class Config:
                  all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_FOLDER") else None,  # docker bind mount
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
                  sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
+                 full_initial_sync: str = os.getenv("FULL_INITIAL_SYNC", "true").lower(),
+                 force_push_sync: bool = os.getenv("FORCE_PUSH_SYNC", "false").lower() == "true",
                  sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
                  platform_map: Path | None = Path("/config/platform_mapping.yaml") if os.getenv("PLATFORM_MAP_FILE") else None,
                  log_level: str = os.getenv("LOG_LEVEL", "INFO"),
@@ -53,6 +55,8 @@ class Config:
         self.STATE_SYNC_DIR: Path | None = state_sync_dir
         self.ALL_SYNC_DIR: Path | None = all_sync_dir
         self.SYNC_MODE: str = sync_mode
+        self.FULL_INITIAL_SYNC: str = full_initial_sync  # "true", "false", or "force" for initial only
+        self.FORCE_PUSH_SYNC: bool = force_push_sync  # for normal sync functionality
         self.SYNC_INTERVAL_SECONDS: int = sync_interval_seconds
         self.WATCHDOG_DELAY_SECONDS: int = watchdog_delay_seconds
         self.PLATFORM_MAP_PATH: Path | None = platform_map
@@ -68,6 +72,30 @@ class Config:
         self.DRY_RUN = dry_run
         self.ENABLE_METRICS = enable_metrics
 
+    def _validate_input_directories(self):
+        """Validate that local library directories are configured correctly and exist within the container."""
+        
+        dir_errors = []
+        # Validate sync directory configuration pattern
+        # Valid patterns: (SAVE_SYNC_DIR + STATE_SYNC_DIR) XOR ALL_SYNC_DIR
+        has_specific_dirs = self.SAVE_SYNC_DIR is not None and self.STATE_SYNC_DIR is not None
+        has_all_dir = self.ALL_SYNC_DIR is not None
+
+        if not (has_specific_dirs ^ has_all_dir):
+            # edge case where none of them are present
+            if self.SAVE_SYNC_DIR is None and self.STATE_SYNC_DIR is None and self.ALL_SYNC_DIR is None:
+                dir_errors.append("No sync directories configured. Check your .env configuration.")
+            else:
+                dir_errors.append("Must specify either (SAVE_SYNC_DIR & STATE_SYNC_DIR) or ALL_SYNC_DIR, not both or neither.")
+        
+        if self.SAVE_SYNC_DIR and not self.SAVE_SYNC_DIR.exists():
+            dir_errors.append(f"SAVE_SYNC_DIR does not exist: {self.SAVE_SYNC_DIR}")
+        if self.STATE_SYNC_DIR and not self.STATE_SYNC_DIR.exists():
+            dir_errors.append(f"STATE_SYNC_DIR does not exist: {self.STATE_SYNC_DIR}")
+        if self.ALL_SYNC_DIR and not self.ALL_SYNC_DIR.exists():
+            dir_errors.append(f"ALL_SYNC_DIR does not exist: {self.ALL_SYNC_DIR}")
+        
+        return dir_errors
 
     def validate(self):
         """Validate required configuration values.
@@ -84,25 +112,7 @@ class Config:
         if not self.ROMM_CREDENTIALS.user:
             errors.append("ROMM_USERNAME is required!")
 
-        # Validate sync directory configuration pattern
-        # Valid patterns: (SAVE_SYNC_DIR + STATE_SYNC_DIR) XOR ALL_SYNC_DIR
-        has_specific_dirs = self.SAVE_SYNC_DIR is not None and self.STATE_SYNC_DIR is not None
-        has_all_dir = self.ALL_SYNC_DIR is not None
-
-        if not (has_specific_dirs ^ has_all_dir):
-            # edge case where none of them are present
-            if self.SAVE_SYNC_DIR is None and self.STATE_SYNC_DIR is None and self.ALL_SYNC_DIR is None:
-                errors.append("No sync directories configured. Check your .env configuration.")
-            else:
-                errors.append("Must specify either (SAVE_SYNC_DIR & STATE_SYNC_DIR) or ALL_SYNC_DIR, not both or neither.")
-
-        # Validate that specified directories exist
-        if self.SAVE_SYNC_DIR and not self.SAVE_SYNC_DIR.exists():
-            errors.append(f"SAVE_SYNC_DIR does not exist: {self.SAVE_SYNC_DIR}")
-        if self.STATE_SYNC_DIR and not self.STATE_SYNC_DIR.exists():
-            errors.append(f"STATE_SYNC_DIR does not exist: {self.STATE_SYNC_DIR}")
-        if self.ALL_SYNC_DIR and not self.ALL_SYNC_DIR.exists():
-            errors.append(f"ALL_SYNC_DIR does not exist: {self.ALL_SYNC_DIR}")
+        errors += self._validate_input_directories()
 
         # Validate platform mapping file (optional - will fallback to exact matching)
         if (self.PLATFORM_MAP_PATH is not None) and (not self.PLATFORM_MAP_PATH.exists()):

@@ -1,0 +1,31 @@
+name: Auto Tag Release
+
+on:
+  push:
+    paths:
+      - 'VERSION'
+    branches:
+      - main
+      - public
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read VERSION file
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Create tag and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+          gh release create "v${{ steps.version.outputs.version }}" --generate-notes --title "Release v${{ steps.version.outputs.version }}"

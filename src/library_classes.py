@@ -19,7 +19,7 @@ class RetroGameServer:
         self.PLATFORM_MAP: dict = platform_map
 
     @staticmethod
-    def _load_platform_mapping() -> dict | None:
+    def _load_platform_mapping() -> dict:
         """Load platform mapping from YAML file.
 
         Expected format:
@@ -33,6 +33,8 @@ class RetroGameServer:
             platform_map_path = get_config().PLATFORM_MAP_PATH
             logger.debug(f"Attempting to load {str(platform_map_path)}")
             
+            data = None
+
             if platform_map_path is not None:
                 with open(platform_map_path, 'r') as f:
                     data = yaml.safe_load(f)
@@ -71,7 +73,6 @@ class RetroGameServer:
         finally:
             return platform_map
 
-
     def get_romm_platform(self, local_platform_name: str) -> str | None:
         """Get the ROMM platform slug for a local platform folder name.
 
@@ -92,13 +93,7 @@ class RetroGameServer:
     @classmethod
     def build_romm_library(cls,
                            romm_user: RommUser):
-        """Factory method to instantiate a RetroGameServerClass with romm library info.
-
-        Args:
-            romm_url: ROMM API base URL. Defaults to config.ROMM_URL
-            username: ROMM username. Defaults to config.ROMM_USERNAME
-            passwd: ROMM password. Defaults to config.ROMM_PASSWORD
-        """
+        """Factory method to instantiate a RetroGameServerClass with romm library info."""
         data = romm_user.get_full_library()
 
         # define the keys of the json response we want early
@@ -169,174 +164,23 @@ class LocalLibrary:
         self.sync_folders: List[Path] = sync_folders
         self.games: Dict[str, Game] = {}
 
-    # region Scan Functions
-    @staticmethod
-    def _collect_games(platform_dir: Path) -> List[Path]:
-        """Discover and filter all game files in a platform directory.
-
-        Iterates through files in the platform directory and returns a list of valid game files,
-        excluding metadata files and directories defined in METADATA_FILE_FILTERS.
-        """
-        files = []
-
-        for file_path in platform_dir.iterdir():
-            if not file_path.is_file():
-                continue
-            # Skip various metadata files and directories
-            if any(filter_str in file_path.name for filter_str in METADATA_FILE_FILTERS):
-                continue
-            files.append(file_path)
-
-        return files
-
-    @staticmethod
-    def _add_game_dict_entry(file_path: Path, platform_name: str, games_dict: dict) -> dict:
-        """Process a file and return updated games_dict with its categorized content.
-
-        Extracts game name and file type from filename, then adds the file to the
-        appropriate category (save, state, or state_screen) in games_dict.
-
-        Args:
-            file_path: Path object for the file to process
-            platform_name: Name of the platform directory
-            games_dict: Dictionary to update with file information
-
-        Returns:
-            Updated games_dict with file categorized and added
-        """
-        filename = file_path.name
-
-        # Extract base game name and file type
-        # Patterns: game.state, game.state0, game.state1, game.state.auto
-        #           game.state.png, game.state0.png, game.state.auto.png
-        game_name = None
-        file_type = None
-
-        # Check for state screenshot (.state.png, .state0.png, .state.auto.png)
-        state_screen_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename)
-        if state_screen_match:
-            game_name = state_screen_match.group(1)
-            file_type = 'state_screen'
-        else:
-            # Check for state file (.state, .state0, .state.auto)
-            state_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?$', filename)
-            if state_match:
-                game_name = state_match.group(1)
-                file_type = 'state'
-            else:
-                # Regular save file (.srm, .sav, etc.)
-                game_name = file_path.stem
-                file_type = 'save'
-
-        # Initialize game entry if not seen before
-        if game_name not in games_dict:
-            games_dict[game_name] = {
-                'path': file_path,
-                'platform': platform_name,
-                'saves': [],
-                'states': [],
-                'screens': []
-            }
-
-        # Categorize file
-        if file_type == 'save':
-            games_dict[game_name]['saves'].append(file_path)
-        elif file_type == 'state':
-            games_dict[game_name]['states'].append(file_path)
-        elif file_type == 'state_screen':
-            games_dict[game_name]['screens'].append(file_path)
-
-        return games_dict
-
-    @staticmethod
-    def _build_games_dict(files: List[Path], platform_name: str) -> dict:
-        """Build games_dict by categorizing files into saves, states, and screenshots.
-
-        Args:
-            files: List of file paths to categorize
-            platform_name: Name of the platform (for passing to _add_game_dict_entry)
-
-        Returns:
-            Dictionary with structure: {game_name: {'platform': str, 'saves': [], 'states': [], 'screens': []}}
-        """
-        games_dict = {}
-
-        for file_path in files:
-            games_dict = LocalLibrary._add_game_dict_entry(file_path, platform_name, games_dict)
-
-        return games_dict
-
-    def match_to_romm(self,
-                      games: List[Game],
-                      romm_library: RetroGameServer) -> None:
-        """Match local games to RetroGameServer library entries. Allows passing an arbitrary list of games for incremental state updates.
-        Uses platform information to narrow search space for efficiency.
-        Currently performs exact name matching within platform. Future enhancement: fuzzy matching.
-        """
-        for game in games:
-            # Narrow search to platform if available
-            if game.platform:
-
-                matched_romm_slug = romm_library.get_romm_platform(game.platform)
-                logger.debug(f"{game.name} -- Matched platform {game.platform} to slug {matched_romm_slug}.")
-                if matched_romm_slug is not None:
-                    platform_games = romm_library.library.filter(
-                        pl.col('platform_slug') == matched_romm_slug
-                    )
-                else:  # fallback to directly check romm slug vs detected game.platform
-                    platform_games = romm_library.library.filter(
-                        pl.col('platform_slug') == game.platform
-                    )
-                
-                # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
-                # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
-                # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
-                # romm_library.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
-                #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
-                matching_rows = platform_games.filter(
-                    pl.col('fs_name').str.contains(game.name, literal=True)
-                )
-
-                if matching_rows.height > 0:
-                    # Convert DataFrame row to dictionary and populate ROMM data
-                    romm_row = matching_rows.row(0, named=True)
-                    game.set_romm_data(romm_row)
-                else:
-                    # Game not found in ROMM library
-                    logger.warning(f"Could not match {game.name} with platform '{game.platform}' to ROMM server. Check your platform_mapping.yaml and verify that this game is on the ROMM server.")
-                    game.is_matched = False
-
-            else:
-                logger.warning(f"Failed to match {game.name}. Games must be organized by platform/content directory. Check your local library structure. ")
-
-    @staticmethod
-    def _load_local_saves_and_states(new_game: Game, file_info: dict):
-        """Loads and populates local save and state files from file_info dict into a Game object."""
-
-        # Local saves
-        for save_file in file_info['saves']:
-            new_game.add_local_save(save_file)
-
-        # Local states
-        for state_file in file_info['states']:
-            new_game.add_local_state(state_file)
-
     def _rescan_local_saves_and_states(self, game: Game) -> None:
         """Rescans and refreshes the existing list of save and state files for a particular game"""
         # Clear existing saves and states
         game.local_save_files = []
-        game.local_state_files = []
+        game.local_state_files = {}
 
         # Rescan platform directory and repopulate
         platform_dir = game.path.parent
-        files = self._collect_games(platform_dir)
-        games_dict = self._build_games_dict(files, game.platform)
+        files = LibraryScanner._collect_games(platform_dir)
+        games_dict = LibraryScanner._build_games_dict(files, game.platform)
 
         if game.name in games_dict:
             file_info = games_dict[game.name]
-            self._load_local_saves_and_states(new_game=game, file_info=file_info)
+            logger.debug("Refreshing local library saves and states...")
+            LibraryScanner._load_local_saves_and_states(new_game=game, file_info=file_info)
 
-    def build_local_library(self) -> dict:
+    def build_local_library(self):
         """Scan local (syncthing or otherwise) folder and build local game catalog. Public class method.
         Aggregates all save files and state files for each game into a single Game object that is then matched to a romm server-side entry. 
         Game name is derived from base filename. Assumes that ROM's in ROMM are the same as that of the savefiles in the local library.
@@ -351,24 +195,20 @@ class LocalLibrary:
                 platform_name = platform_dir.name
 
                 # Discover and filter all game files in this platform directory
-                files = self._collect_games(platform_dir)
+                files = LibraryScanner._collect_games(platform_dir)
 
                 # Build games dictionary from files
-                games_dict = self._build_games_dict(files, platform_name)
+                games_dict = LibraryScanner._build_games_dict(files, platform_name)
 
                 # Create Game objects for all games in this platform
-                games = []
+                logger.debug("Building 'Game' objects for local library...")
                 for game_name, file_info in games_dict.items():
                     logger.debug(f"Processing game: {game_name} ({len(file_info['saves'])} saves, {len(file_info['states'])} states)")
                     new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])
-                    self._load_local_saves_and_states(new_game=new_game, file_info=file_info)
-                    games.append(new_game)
+                    LibraryScanner._load_local_saves_and_states(new_game=new_game, file_info=file_info)
                     # Add to games dict
                     self.games[game_name] = new_game
                     logger.debug(f"  Added {game_name} to library")
-
-        return games_dict
-    # endregion
 
     # region Utility Functions
     def get_game_by_name(self, game_name: str) -> Optional[Game]:
@@ -415,18 +255,18 @@ class LocalLibrary:
             game_name = event_file_path.stem
 
             # Scan platform directory and collect files for this game
-            files = self._collect_games(platform_dir)
-            games_dict = self._build_games_dict(files, platform_name)
+            files = LibraryScanner._collect_games(platform_dir)
+            games_dict = LibraryScanner._build_games_dict(files, platform_name)
 
             # Create the Game object
             file_info = games_dict[game_name]
             new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])
 
             # Match to ROMM
-            self.match_to_romm([new_game], romm_library)
+            LibraryScanner.match_to_romm([new_game], romm_library)
 
             # Load local saves and states
-            self._load_local_saves_and_states(new_game=new_game, file_info=file_info)
+            LibraryScanner._load_local_saves_and_states(new_game=new_game, file_info=file_info)
 
             # Add to games dict
             self.games[game_name] = new_game
@@ -438,22 +278,11 @@ class LocalLibrary:
             logger.error(f"[WATCHDOGSYNC] Error adding new game from file change event: {e}")
             return None
 
-    @staticmethod
-    def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
-        """Extract game name from watchdog event path.
-
-        Note: Metadata files are already filtered by FileChangeHandler, so this receives only valid game files.
+    def update_from_watchdog_events(self,
+                                    event_paths: List[Path],
+                                    romm_library: RetroGameServer) -> List[Game]:
         """
-        event = event_path.name
-        logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
-        return str(event).split(".")[0]  # game name will be everything before the FIRST extension
-
-    def extract_games_from_watchdog_events(self,
-                                           event_paths: List[Path],
-                                           romm_library: RetroGameServer) -> List[Game]:
-        """Parse watchdog filesystem events and identify affected games for syncing.
-
-        This method identifies which games have had file changes and ensures they're in the
+        Identifies which games have had file changes and ensures they're in the
         library (adding new games if needed). The affected games are then rescanned to pick up
         any new save/state files before being returned for sync operations.
 
@@ -464,16 +293,7 @@ class LocalLibrary:
         Returns:
             List of affected Game objects (deduplicated) ready for sync operations
         """
-        game_changed_files = {}  # game_name -> set of Path objects
-
-        # Pre-filter captured events for the relevant file changes.
-        # If we don't do this, every chunk that syncthing pushes will get processed. The sync is robust enough to reject these, but it clutters the logs.
-        for event_path in event_paths:
-            game_name = self._detect_game_from_watchdog_event(event_path)
-            if game_name is not None:
-                if game_name not in game_changed_files:
-                    game_changed_files[game_name] = set()
-                game_changed_files[game_name].add(event_path)
+        game_changed_files = LibraryScanner._parse_watchdog_events(event_paths=event_paths)
 
         affected_games_dict = {}  # game_name -> Game object
 
@@ -496,3 +316,197 @@ class LocalLibrary:
 
         return list(affected_games_dict.values())
     # endregion
+
+
+class LibraryScanner:
+    """Utility class for library scanning functions to interface between LocalLibrary, RetroGameServer, and SyncOrchestrator"""
+
+    # region LocalLibrary helpers
+    @staticmethod
+    def _collect_games(platform_dir: Path) -> List[Path]:
+        """Discover and filter all game files in a platform directory.
+
+        Iterates through files in the platform directory and returns a list of valid game files,
+        excluding metadata files and directories defined in METADATA_FILE_FILTERS.
+        """
+        files = []
+
+        for file_path in platform_dir.iterdir():
+            if not file_path.is_file():
+                continue
+            # Skip various metadata files and directories
+            if any(filter_str in file_path.name for filter_str in METADATA_FILE_FILTERS):
+                continue
+            files.append(file_path)
+
+        return files
+
+    @staticmethod
+    def _add_game_dict_entry(file_path: Path, platform_name: str, games_dict: dict) -> dict:
+        """Process a file and return updated games_dict with its categorized content.
+
+        Extracts game name and file type from filename, then adds the file to the
+        appropriate category (save, state, or state_screen) in games_dict.
+
+        The dict has one key per unique file "stem". Retroarch emulator cores should name files with similar patterns:
+            - "game(stem)".srm
+            - "game(stem).state"
+            - "game(stem).
+        Specials: 
+            - melonDS uses .ml{n}.
+            - regular DS is .dsv or .sav. (all "saves" are captured under the else block)
+
+        Args:
+            file_path: Path object for the file to process
+            platform_name: Name of the platform directory
+            games_dict: Dictionary to update with file information
+
+        Returns:
+            Updated games_dict with file categorized and added
+        """
+        filename = file_path.name
+
+        # Extract base game name and file type
+        # Patterns: game.state, game.state0, game.state1, game.state.auto
+        #           game.state.png, game.state0.png, game.state.auto.png
+        game_name = None
+        file_type = None
+
+        # Check for state screenshot (.state.png, .state0.png, .state.auto.png)
+        state_screen_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename)
+        if state_screen_match:
+            game_name = state_screen_match.group(1)
+            file_type = 'state_screen'
+        else:
+            # check for the actual states. RA-style and others *should* be mutually exclusive.
+            state_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?$', filename)  # general retroarch state extension
+            melonds_match = re.match(r'^(.+?)\.ml\d+$', filename)  # melonDS state extension ".ml{n}"
+            if state_match:
+                game_name = state_match.group(1)
+                file_type = 'state'
+            elif melonds_match:  # melonDS state extension
+                game_name = melonds_match.group(1)
+                file_type = 'state'
+            else:
+                # Regular save file (.srm, .sav, etc.)
+                game_name = file_path.stem
+                file_type = 'save'
+
+        # Initialize game entry if not seen before
+        if game_name not in games_dict:
+            games_dict[game_name] = {
+                'path': file_path,
+                'platform': platform_name,
+                'saves': [],
+                'states': [],
+                'screens': []
+            }
+
+        # Categorize file
+        if file_type == 'save':
+            games_dict[game_name]['saves'].append(file_path)
+        elif file_type == 'state':
+            games_dict[game_name]['states'].append(file_path)
+        elif file_type == 'state_screen':
+            games_dict[game_name]['screens'].append(file_path)
+
+        return games_dict
+
+    @staticmethod
+    def _load_local_saves_and_states(new_game: Game, file_info: dict):
+        """Loads and populates local save and state files from file_info dict into a Game object."""
+
+        new_game.add_local_saves(game_dict_entry=file_info)
+
+        new_game.add_local_states(game_dict_entry=file_info)
+
+    @staticmethod
+    def _build_games_dict(files: List[Path], platform_name: str) -> dict:
+        """Build games_dict, a dictionary containing the required data for each game:
+        {game_name:
+            {'platform': str,
+            'saves': [],
+            'states': [],
+            'screens': []
+            }
+        }
+        This is a factory function that checks all the files given to it.
+        """
+        games_dict = {}
+
+        for file_path in files:
+            games_dict = LibraryScanner._add_game_dict_entry(file_path, platform_name, games_dict)
+
+        return games_dict
+    # endregion
+
+    # RomM - LocalLibrary interface
+    @staticmethod
+    def match_to_romm(games: List[Game],
+                      romm_library: RetroGameServer) -> None:
+        """Match local games to RetroGameServer library entries. Allows passing an arbitrary list of games for incremental state updates.
+        Uses platform information to narrow search space for efficiency.
+        Currently performs exact name matching within platform. Future enhancement: fuzzy matching.
+        """
+        for game in games:
+            # Narrow search to platform if available
+            if game.platform:
+
+                matched_romm_slug = romm_library.get_romm_platform(game.platform)
+                logger.debug(f"{game.name} -- Matched platform {game.platform} to slug {matched_romm_slug}.")
+                if matched_romm_slug is not None:
+                    platform_games = romm_library.library.filter(
+                        pl.col('platform_slug') == matched_romm_slug
+                    )
+                else:  # fallback to directly check romm slug vs detected game.platform
+                    platform_games = romm_library.library.filter(
+                        pl.col('platform_slug') == game.platform
+                    )
+                
+                # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
+                # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
+                # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
+                # romm_library.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
+                #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
+                matching_rows = platform_games.filter(
+                    pl.col('fs_name').str.contains(game.name, literal=True)
+                )
+
+                if matching_rows.height > 0:
+                    # Convert DataFrame row to dictionary and populate ROMM data
+                    romm_row = matching_rows.row(0, named=True)
+                    game.set_romm_data(romm_row)
+                else:
+                    # Game not found in ROMM library
+                    logger.warning(f"Could not match {game.name} with platform '{game.platform}' to ROMM server. Check your platform_mapping.yaml and verify that this game is on the ROMM server.")
+                    game.is_matched = False
+
+            else:
+                logger.warning(f"Failed to match {game.name}. Games must be organized by platform/content directory. Check your local library structure.")
+
+    # Helpers for watchdog sync
+    @staticmethod
+    def _parse_watchdog_events(event_paths: List[Path]) -> dict:
+        """Parse a list of watchdog events and map them to existing games."""
+        game_changed_files = {}  # game_name -> set of Path objects
+
+        # Pre-filter captured events for the relevant file changes.
+        # If we don't do this, every chunk that syncthing pushes will get processed. The sync is robust enough to reject these, but it clutters the logs.
+        for event_path in event_paths:
+            game_name = LibraryScanner._detect_game_from_watchdog_event(event_path)
+            if game_name is not None:
+                if game_name not in game_changed_files:
+                    game_changed_files[game_name] = set()
+                game_changed_files[game_name].add(event_path)
+
+        return game_changed_files
+
+    @staticmethod
+    def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
+        """Extract game name from watchdog event path.
+
+        Note: Metadata files are already filtered by FileChangeHandler, so this receives only valid game files.
+        """
+        event = event_path.name
+        logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
+        return str(event).split(".")[0]  # game name will be everything before the FIRST extension

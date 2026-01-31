@@ -20,10 +20,19 @@ def initialize_romm_sync():
     app_cfg = get_config()
 
     # First sync. Compares all save states
-    logger.info("Performing initial sync. This may take a while...")
+    logger.info("Building local and romm libraries. This may take a while for large libraries...")
     srv, lcl = SyncOrchestrator.build_libraries(app_cfg=app_cfg)
 
+    if app_cfg.FULL_INITIAL_SYNC == "false":
+        logger.info("Initial sync skipped ('FULL_INITIAL_SYNC' = false).")
+    else:
+        logger.info("Performing initial sync.")
+        force_sync: bool = app_cfg.FULL_INITIAL_SYNC == "force"
+        init_state = SyncOrchestrator(local_library=lcl, romm_server=srv)
+        init_state.full_sync(force_sync=force_sync)
+
     return app_cfg, srv, lcl
+
 
 class AppExit():
     def __init__(self, exit_handler):
@@ -65,7 +74,6 @@ def run_watch_sync(srv, lcl):
     # Create sync manager to control the watchdog sync
     sync_manager = WatchdogSyncManager(srv=srv, lcl=lcl)
 
-
     # Create event handler with sync manager
     event_handler = FileChangeHandler(sync_manager)
     observer = Observer()
@@ -97,7 +105,7 @@ def main():
     """Main orchestration function."""
     app_cfg, srv, lcl = initialize_romm_sync()
 
-    logger.info("Romm_sync starting...")
+    logger.info("Romm_sync starting!")
 
     if app_cfg.SYNC_MODE == "periodic":
         run_periodic_sync(srv, lcl)
