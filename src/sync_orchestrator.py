@@ -12,8 +12,7 @@ from collections import namedtuple
 from time import perf_counter as tpc
 
 from .games_class import Game
-from .library_classes import LocalLibrary, RetroGameServer
-from .romm_api_func import RommUser
+from .library_classes import LocalLibrary, RetroGameServer, LibraryScanner
 from .config import get_config, METADATA_FILE_FILTERS
 from watchdog.events import FileSystemEventHandler
 
@@ -65,7 +64,7 @@ class SyncOrchestrator:
         
         lcl = LocalLibrary(sync_dirs)
         lcl.build_local_library()
-        lcl.match_to_romm(list(lcl.games.values()), srv)
+        LibraryScanner.match_to_romm(list(lcl.games.values()), srv)
         
         return srv, lcl
 
@@ -86,7 +85,7 @@ class SyncOrchestrator:
                     logger.error(f"Failed to fetch ROMM data for {game.name}: {e}")
 
     @staticmethod
-    def _push_local_to_romm(games: List[Game]) -> tuple[List[Game], List[tuple[Game, Exception]]]:
+    def _push_local_to_romm(games: List[Game], force: bool) -> tuple[List[Game], List[tuple[Game, Exception]]]:
         """Push local saves and states to ROMM.
 
         Args:
@@ -102,8 +101,8 @@ class SyncOrchestrator:
             if game.is_matched:
                 logger.debug(f"Pushing local save data for {game.name} to ROMM.")
                 try:
-                    game.sync_local_saves_to_remote()
-                    game.sync_local_states_to_remote()
+                    game.sync_local_saves_to_remote(force)
+                    game.sync_local_states_to_remote(force)
                     successful.append(game)
                 except Exception as e:
                     logger.error(f"Failed to sync {game.name} to ROMM: {e}")
@@ -123,9 +122,8 @@ class SyncOrchestrator:
         matched = [g for g in games if g.is_matched]
         unmatched = [g for g in games if not g.is_matched]
         return matched, unmatched
-        
 
-    def full_sync(self) -> SyncResult:
+    def full_sync(self, force_sync: bool = False) -> SyncResult:
         """Perform a complete synchronization between local library and ROMM.
         This is the main sync operation that:
         1. Fetches current ROMM state for all matched games
@@ -159,7 +157,7 @@ class SyncOrchestrator:
 
             # Step 2: Push local to ROMM
             logger.info(f"[FULLSYNC] Syncing local data to ROMM for {len(matched_games)} games")
-            successful, failed = self._push_local_to_romm(matched_games)
+            successful, failed = self._push_local_to_romm(matched_games, force=force_sync)
 
             result.games_synced = successful
             result.games_failed = failed
@@ -197,7 +195,7 @@ class SyncOrchestrator:
         4. Pushes local changes to ROMM
         """
         logger.info("---------- Starting watchdog sync ----------")
-        
+
         # First, refresh the romm library.
         logger.debug("[WATCHDOGSYNC] Updating state of Romm library.")
         # updates the romm server object with a fresh, rebuilt instance. This is needed so that newly added games are not missed.
@@ -218,7 +216,7 @@ class SyncOrchestrator:
             
             # Extract the games using the file paths recorded by watchdog
             logger.info(f"[WATCHDOGSYNC] Processing {len(event_paths)} file change events...")
-            games_to_sync = self.lcl.extract_games_from_watchdog_events(
+            games_to_sync = self.lcl.update_from_watchdog_events(
                 event_paths,
                 self.srv
             )
@@ -236,7 +234,7 @@ class SyncOrchestrator:
             self._fetch_romm_data(games_to_sync)
 
             # Step 3: Push local to ROMM
-            successful, failed = self._push_local_to_romm(games_to_sync)
+            successful, failed = self._push_local_to_romm(games_to_sync, force=self.app_cfg.FORCE_PUSH_SYNC)
 
             result.games_synced = successful
             result.games_failed = failed
@@ -296,6 +294,7 @@ class WatchdogSyncManager:
     def execute_sync(self):
         """Execute the sync operation for pending events."""
         try:
+            t0 = tpc()
             with self.timer_lock:
                 self.is_syncing = True
 
@@ -312,15 +311,17 @@ class WatchdogSyncManager:
             result = self.orchestrator.watchdog_sync(event_paths, event_types)
 
             if result.success:
-                logger.info(f"Watchdog sync succeeded: {len(result.games_synced)} games synced")
+                logger.info(f"Watchdog sync succeeded! {len(result.games_synced)} games synced in {round(tpc() - t0, 2)} s.")
             else:
-                logger.error(f"Watchdog sync failed: {result.error_message}")
+                logger.error(f"Watchdog sync had errors: {result.error_message}")
                 if result.games_failed:
                     logger.warning(f"{len(result.games_failed)} games failed to sync")
 
         except Exception as e:
             logger.error(f"Failed to execute sync: {e}", exc_info=True)
         finally:
+
+            logger.info("---------- Continuing to watch for file changes ----------")
             with self.timer_lock:
                 self.is_syncing = False
 
@@ -331,13 +332,13 @@ class WatchdogSyncManager:
                 self.timer_thread.cancel()
 
 
-
 class PeriodicSyncManager:
     """Manages periodic sync, performing full syncs at regular intervals."""
 
     def __init__(self, srv: RetroGameServer, lcl: LocalLibrary):
         self.orchestrator = SyncOrchestrator(lcl, srv)
         self.sync_interval = get_config().SYNC_INTERVAL_SECONDS
+        self.force_sync = get_config().FORCE_PUSH_SYNC
         self.stop_event = threading.Event()
 
     def run(self):
@@ -347,9 +348,8 @@ class PeriodicSyncManager:
                 logger.info("Running periodic sync...")
                 try:
                     t0 = tpc()
-                    self.orchestrator.full_sync()
-                    t1 = tpc()
-                    logger.info(f"Periodic sync completed in {round(t1 - t0, 2)} s.")
+                    self.orchestrator.full_sync(force_sync=self.force_sync)
+                    logger.info(f"Periodic sync completed in {round(tpc() - t0, 2)} s.")
                 except Exception as e:
                     logger.error(f"Sync failed: {e}")
 

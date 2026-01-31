@@ -1,10 +1,10 @@
 # romm_sync
 
-A utility for syncing emulator save files across your gaming devices and backing them up to [ROMM.app](https://romm.app/).
+A utility for syncing emulator save files across your gaming devices and backing them up to [RomM.app](https://romm.app/).
 
 # Overview
 
-I've found that Romm is a nice way to have a "source of truth" for my game library, but for now, full-featured clients like [Grout](https://github.com/rommapp/grout) are not supported for all handhelds and Romm's planned sync feature is not ready (yet). If you have multiple handhelds whose saves are kept in sync with syncthing and want a way to have those in romm so you can switch back and forth at will, **romm_sync** might help! 
+I've found that Romm is a nice way to have a "source of truth" for my game library, but for now, full-featured clients like [Grout](https://github.com/rommapp/grout) are not supported for all handhelds and Romm's planned sync feature is not ready (yet). If you have multiple handhelds whose saves are kept in sync with syncthing and want a way to have those in RomM so you can switch back and forth at will, **romm_sync** might help! 
 
 This all started when I set up Syncthing between my devices with Retroarch-based OS's (Android, MuOS, Knulli,...) and Minarch-based OS's (MinUI, NextUI) and none of the folders lined up properly and forced me into making a tedious Syncthing folder setup. Doable yes, but annoying. I had my Romm instance sitting right there and an opportunity to practice my Python for work so now...here we are.
 
@@ -32,7 +32,7 @@ The implicit assumption here is that the game files (ROM, with one M) on your de
 
 ### This is NOT a Romm Client. 
 
-It's just a one way push to Romm from Syncthing with the expectation that you use a real romm client to pull from Romm to your handheld. (see Grout, for example). This just makes it easier to have access to Romm's library organization niceties if you have some devices that don't support a Romm client.
+It's just a one way push to Romm from Syncthing with the expectation that you use a real RomM client to pull from Romm to your handheld. (see Grout, for example). This just makes it easier to have access to Romm's library organization niceties if you have some devices that don't support a Romm client.
 
 # Architecture
 
@@ -41,7 +41,7 @@ Gaming Devices (RetroArch, etc.)
          ↓ (Syncthing)
     Central Sync Folder
          ↓ (romm_sync watches)
-    ROMM Database (via API)
+    RomM Database (via API)
     + (Optional and Separate) Backup Location
 ```
 
@@ -54,16 +54,19 @@ Clone or download+unzip this repo onto the machine you'll be running it on.
 ## Configure
 Set the following variables in `.env.example`:
 
-### ROMM Configuration
+### RomM Configuration
 
-**ROMM_URL:**
-Your romm instance's address. 
+**`ROMM_URL`:** (required)
+Your RomM instance's address. 
 
-**ROMM_USERNAME**:
-Your username in romm.
+**`ROMM_USERNAME`**: (required)
+Your username in RomM.
 
-**ROMM_PASSWORD**: 
-Your password for romm.
+**`ROMM_PASSWORD`**: (required)
+Your password for RomM.
+
+**`ROMM_API_LIMIT`**: (optional)
+Pagination limit for pulling the full list of ROM's down from RomM. Default follows RomM's default (50 items / request). If you have a very large library, you could try increasing this to speed up initial library build, but you may run into API issues. Changing this is generally not needed; most of the library build is spent getting each save and state catalogued.
 
 ### Sync Configuration
 This app will allow two different modes:
@@ -104,21 +107,37 @@ For this, use:
 
 **STATE_SYNC_FOLDER**: local directory with state files (.state etc.)
 
-#### Platform Mapping
-A .yaml file is included that you can edit to map your platform directories (i.e snes, nds,...) to the platform "slug" that romm expects. The app forces a match by game platform, similar to how ROMM's uploads work, so this mapping file is required if the platform folder names in your library are different from ROMM's. By default, this list attempts to cover for some common systems and alternative slugs used in MinUI/NextUI and Knulli, but it is NOT exhaustive so keep an eye on the logs if you're not seeing some games show up. 
-
-See https://docs.romm.app/4.5.0/Platforms-and-Players/Supported-Platforms/ for ROMM's supported platforms.
+Either `ALL_SYNC_FOLDER` or BOTH `SAVE_SYNC_FOLDER` and `STATE_SYNC_FOLDER` are required.
 
 
-### SYNC_MODE: 
+### `SYNC_MODE` (required) 
 Two options here:
 - "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the sync folders.
    - `WATCHDOG_DELAY_SECONDS` is the amount of time it'll wait for a period of no file system activity once a change is detected. Default is 60 seconds. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
-- "periodic": runs the full sync between your local library and romm library every `SYNC_INTERVAL_SECONDS`. 
+- "periodic": runs the full sync between your local library and RomM library every `SYNC_INTERVAL_SECONDS`. 
    - Simpler but if you have a large library, syncs may take a while because it queries the ROMM API for every single save and state you have.
    - I have about 40 different games synced with 1 save and a couple states each, running on the same machine as the instance, and a full sync with no changes takes ~20 seconds.
 
 The default is the incremental sync and I'd stick to that.
+
+#### OPTIONALS
+- `WATCHDOG_DELAY_SECONDS` (`watch` mode only)
+    - the amount of time to wait for a period of no file system activity once a change is detected.
+    - DEFAULT: 60s. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
+- `SYNC_INTERVAL_SECONDS` (`periodic` mode only)
+    - sync interval for the full sync. A full sync can take a while, especially for larger libraries. Default = 1800s (30 minutes).
+- `FULL_INITIAL_SYNC` (both)
+    - Exposed in v1.1.0 and changed to default `True`. This enables a full initial sync to RomM on app startup. Previously, the incremental sync would only push files when it saw changes, which might not have been expected.
+    - Options: `True`, `False`, `Force`. Force is the same behavior as `FORCE_PUSH_SYNC`, but only does it on app startup.
+- `FORCE_PUSH_SYNC` (both)
+    - Push all changed save files and states to RomM regardless if RomM's state is newer. This is a little dangerous. Defaults to `False`.
+
+#### Platform Mapping
+A .yaml file is included that you can edit to map your platform directories (i.e snes, nds,...) to the platform "slug" that RomM expects. The app forces a match by game platform, similar to how RomM's uploads work, so this mapping file is required if the platform folder names in your library are different from RomM's. By default, this list attempts to cover for some common systems and alternative slugs used in MinUI/NextUI and Knulli, but it is NOT exhaustive so keep an eye on the logs if you're not seeing some games show up. 
+
+See https://docs.romm.app/4.5.0/Platforms-and-Players/Supported-Platforms/ for RomM's supported platforms.
+
+The mapping is not required, but if it isn't provided, the app can only match *exactly* to RomM's slug.
 
 ## Spin it up!
 Run the following from a terminal.
