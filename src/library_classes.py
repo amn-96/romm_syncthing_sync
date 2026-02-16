@@ -165,20 +165,32 @@ class LocalLibrary:
         self.games: Dict[str, Game] = {}
 
     def _rescan_local_saves_and_states(self, game: Game) -> None:
-        """Rescans and refreshes the existing list of save and state files for a particular game"""
+        """Rescans and refreshes the existing list of save and state files for a particular game."""
+        
+        logger.debug(f"Refreshing saves and states for {game.name}")
+
         # Clear existing saves and states
         game.local_save_files = []
         game.local_state_files = {}
 
-        # Rescan platform directory and repopulate
-        platform_dir = game.path.parent
-        files = LibraryScanner._collect_games(platform_dir)
-        games_dict = LibraryScanner._build_games_dict(files, game.platform)
+        for sync_dir in self.sync_folders:
+            try:
+                platform_dir = sync_dir / game.platform
 
-        if game.name in games_dict:
-            file_info = games_dict[game.name]
-            logger.debug("Refreshing local library saves and states...")
-            LibraryScanner._load_local_saves_and_states(new_game=game, file_info=file_info)
+                files = LibraryScanner._collect_games(platform_dir)
+                games_dict = LibraryScanner._build_games_dict(files, game.platform)
+
+                if game.name in games_dict:
+                    file_info = games_dict[game.name]
+                    LibraryScanner._load_local_saves_and_states(g=game, file_info=file_info)
+                    logger.debug(f"Success! Found {len(game.local_save_files)} save(s), {len(game.local_state_files)} state(s).")
+            
+            except FileNotFoundError as fe:
+                logger.debug(f"Not found in {sync_dir}: {fe}")
+            except KeyError as ke:
+                logger.debug(f"{ke} (this should never happen).")
+            except Exception as e:
+                logger.debug(f"Unexpected error: {e}")
 
     def build_local_library(self):
         """Scan local (syncthing or otherwise) folder and build local game catalog. Public class method.
@@ -198,16 +210,20 @@ class LocalLibrary:
                 files = LibraryScanner._collect_games(platform_dir)
 
                 # Build games dictionary from files
-                games_dict = LibraryScanner._build_games_dict(files, platform_name)
+                games_dict = LibraryScanner._build_games_dict(files=files, platform_name=platform_name)
 
                 # Create Game objects for all games in this platform
                 logger.debug("Building 'Game' objects for local library...")
                 for game_name, file_info in games_dict.items():
                     logger.debug(f"Processing game: {game_name} ({len(file_info['saves'])} saves, {len(file_info['states'])} states)")
-                    new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])
-                    LibraryScanner._load_local_saves_and_states(new_game=new_game, file_info=file_info)
-                    # Add to games dict
-                    self.games[game_name] = new_game
+                    if game_name in self.games:
+                        existing_game = self.games[game_name]
+                        LibraryScanner._load_local_saves_and_states(g=existing_game, file_info=file_info)
+                    else:
+                        new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])  
+                        LibraryScanner._load_local_saves_and_states(g=new_game, file_info=file_info)
+                        self.games[game_name] = new_game
+
                     logger.debug(f"  Added {game_name} to library")
 
     # region Utility Functions
@@ -266,7 +282,7 @@ class LocalLibrary:
             LibraryScanner.match_to_romm([new_game], romm_library)
 
             # Load local saves and states
-            LibraryScanner._load_local_saves_and_states(new_game=new_game, file_info=file_info)
+            LibraryScanner._load_local_saves_and_states(g=new_game, file_info=file_info)
 
             # Add to games dict
             self.games[game_name] = new_game
@@ -413,16 +429,16 @@ class LibraryScanner:
         return games_dict
 
     @staticmethod
-    def _load_local_saves_and_states(new_game: Game, file_info: dict):
+    def _load_local_saves_and_states(g: Game, file_info: dict):
         """Loads and populates local save and state files from file_info dict into a Game object."""
 
-        new_game.add_local_saves(game_dict_entry=file_info)
+        g.add_local_saves(game_dict_entry=file_info)
 
-        new_game.add_local_states(game_dict_entry=file_info)
+        g.add_local_states(game_dict_entry=file_info)
 
     @staticmethod
     def _build_games_dict(files: List[Path], platform_name: str) -> dict:
-        """Build games_dict, a dictionary containing the required data for each game:
+        """Build a fresh games_dict, a dictionary containing the required data for each game:
         {game_name:
             {'platform': str,
             'saves': [],
@@ -433,7 +449,6 @@ class LibraryScanner:
         This is a factory function that checks all the files given to it.
         """
         games_dict = {}
-
         for file_path in files:
             games_dict = LibraryScanner._add_game_dict_entry(file_path, platform_name, games_dict)
 
