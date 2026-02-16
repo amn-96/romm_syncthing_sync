@@ -48,7 +48,7 @@ class RommSaves:
 
         with open(local_filepath, 'rb') as f:
             files = {'saveFile': (local_filepath.name, f)}
-            params = {'rom_id': rom_id}
+            params = {"rom_id": rom_id}
 
             url = f"{self.romm_user.url}/api/saves/"
             response = requests.post(
@@ -150,7 +150,7 @@ class RommStates:
                 response = requests.post(
                     url,
                     auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                    params={'rom_id': rom_id, 'emulator': emulator},
+                    params={"rom_id": rom_id, 'emulator': emulator},
                     files=files
                 )
                 logger.debug(f"POST {url} - {response.status_code}")
