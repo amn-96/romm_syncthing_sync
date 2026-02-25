@@ -2,7 +2,7 @@
 ---
 services:
   romm-sync:
-    build: .
+    image: ghcr.io/amn-96/romm_syncthing_sync:latest
     container_name: romm-sync
     restart: unless-stopped
     env_file: .env.example

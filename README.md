@@ -1,6 +1,6 @@
 # romm_sync
 
-A utility for syncing emulator save files across your gaming devices and backing them up to [RomM.app](https://romm.app/).
+A utility for syncing emulator save files across your gaming devices and backing them up to [RomM](https://romm.app/).
 
 # Overview
 
@@ -46,13 +46,13 @@ Gaming Devices (RetroArch, etc.)
 ```
 
 # Usage
-I tried to make this as hands-off of a setup as possible but I'm a bit of a noob on docker development so this isn't published on any docker repos yet and as a result, it isn't as smooth as it could be.
+I tried to make this as hands-off of a setup as possible. As of version `1.2.0`, I have hosted the docker image on ghcr.io, so the only files you will need are `docker-compose.yml` and `.env.example`.
 
 ## Get the Files
-Clone or download+unzip this repo onto the machine you'll be running it on.
+Download `docker-compose.yml` and `.env.example` to the directory of your choice. 
 
 ## Configure
-Set the following variables in `.env.example`:
+Rename `.env.example` to `.env` and set the following variables according to your RoMm and server configuration:
 
 ### RomM Configuration
 
@@ -135,17 +135,20 @@ The default is the incremental sync and I'd stick to that.
 #### Platform Mapping
 A .yaml file is included that you can edit to map your platform directories (i.e snes, nds,...) to the platform "slug" that RomM expects. The app forces a match by game platform, similar to how RomM's uploads work, so this mapping file is required if the platform folder names in your library are different from RomM's. By default, this list attempts to cover for some common systems and alternative slugs used in MinUI/NextUI and Knulli, but it is NOT exhaustive so keep an eye on the logs if you're not seeing some games show up. 
 
-See https://docs.romm.app/4.5.0/Platforms-and-Players/Supported-Platforms/ for RomM's supported platforms.
+See https://docs.romm.app/latest/Platforms-and-Players/Supported-Platforms/ for RomM's supported platforms.
 
 The mapping is not required, but if it isn't provided, the app can only match *exactly* to RomM's slug.
 
 ## Spin it up!
 Run the following from a terminal.
 ```bash
-cd {YOUR_CLONE_DIRECTORY}
-docker compose build
+cd {YOUR_DIRECTORY_OF_CHOICE}
 docker compose up -d
 ```
 
-That oughta be it...now it should just work™ and you should soon see all your saves and states in Romm!
+That oughta be it...now it should just work™ and you should soon see all your saves and states in RomM!
 
+# Known Issues
+- Retroarch's state screenshots are not linked to the corresponding state file on the RomM server. I [submitted a ticket for this](https://github.com/rommapp/romm/issues/3031#issuecomment-3936828273) and it should be addressed in the next RomM release >4.6.1.
+- Right now, Syncthing only PUSHES to RomM. When I have some free time, I plan to implement sync in the other direction.
+- Only supports HTTP Basic Authentication with RomM; no OAuth/OIDC. You may still use OIDC with RomM (I do), but I don't think you can disable HTTP authentication in the RomM configuration.
