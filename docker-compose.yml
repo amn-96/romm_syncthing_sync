@@ -7,7 +7,8 @@ services:
     restart: unless-stopped
     env_file: .env.example
     volumes:
-    # do NOT change the target bind mounts. Specify the directories that are relevant to you.
+    # do NOT change these. Update the variables in .env. 
+    # The /syncdata/... bind mounts are hardcoded in the container.
       # - ${ALL_SYNC_FOLDER}:/syncdata:ro  # Uncomment if saves and states in the same folder.
       - ${SAVE_SYNC_FOLDER}:/syncdata/saves:ro
       - ${STATE_SYNC_FOLDER}:/syncdata/states:ro

@@ -21,7 +21,8 @@ This all started when I set up Syncthing between my devices with Retroarch-based
 ## Some caveats
 
 ### Limited Scope of Save Support
-I wrote this mainly for my uses, so it's almost certainly not taking everybody's folder structure into account. My Retroarch instance is configured similar to the Knulli defaults:
+I wrote this mainly for my uses, so it's probably not taking everybody possible folder structure into account. My Retroarch instance is configured similar to the Knulli defaults, so it should cover common usage patterns.
+
 - Sort Saves by Content Directory
 - Sort States by Content Directory
 
@@ -48,11 +49,13 @@ Gaming Devices (RetroArch, etc.)
 # Usage
 I tried to make this as hands-off of a setup as possible. As of version `1.2.0`, I have hosted the docker image on ghcr.io, so the only files you will need are `docker-compose.yml` and `.env.example`.
 
+I didn't account for every possible use case; generally, this will work best if you have saves and states synced and sorted by platform with a single RomM user. The app mounts all your data read-only, so it should be safe to experiment with something like multiple instances if you'd like to sync save data for multiple RomM users at once. 
+
 ## Get the Files
-Download `docker-compose.yml` and `.env.example` to the directory of your choice. 
+Download `docker-compose.yml`, `.env.example`, and `platform_mapping.yaml` (if desired) to the directory of your choice. Typically, you would rename `.env.example` to `.env` and update the corresponding line in `docker-compose.yml` accordingly (`env_file: .env`), but they will work fine together as written. The included docker compose is just the minimum configuration required for the app to run.
 
 ## Configure
-Rename `.env.example` to `.env` and set the following variables according to your RoMm and server configuration:
+`docker-compose.yml` is written such that you should not need to edit it at all. Instead, all variables are configured in `.env`. Edit the following variables according to your RoMm and server configuration:
 
 ### RomM Configuration
 
@@ -115,7 +118,7 @@ Two options here:
 - "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the sync folders.
    - `WATCHDOG_DELAY_SECONDS` is the amount of time it'll wait for a period of no file system activity once a change is detected. Default is 60 seconds. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
 - "periodic": runs the full sync between your local library and RomM library every `SYNC_INTERVAL_SECONDS`. 
-   - Simpler but if you have a large library, syncs may take a while because it queries the ROMM API for every single save and state you have.
+   - Simpler but if you have a large library, syncs may take a while because it queries the RomM API for every single save and state you have.
    - I have about 40 different games synced with 1 save and a couple states each, running on the same machine as the instance, and a full sync with no changes takes ~20 seconds.
 
 The default is the incremental sync and I'd stick to that.
