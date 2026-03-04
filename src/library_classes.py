@@ -2,7 +2,7 @@
 In general, these are one step abstracted over Game, so they operate on groups of Game at once."""
 from pathlib import Path
 from typing import List, Dict, Optional
-import polars as pl
+from collections import defaultdict
 from loguru import logger
 import re
 import yaml
@@ -15,7 +15,7 @@ from .config import METADATA_FILE_FILTERS, get_config
 
 class RetroGameServer:
     def __init__(self, library, platform_map):
-        self.library: pl.DataFrame = library
+        self.library: List[dict] = library
         self.PLATFORM_MAP: dict = platform_map
 
     @staticmethod
@@ -98,29 +98,18 @@ class RetroGameServer:
 
         # define the keys of the json response we want early
         library_columns = {
-            'id': pl.Int64,
-            'name': pl.String,
-            'platform_slug': pl.String,
-            'platform_id': pl.Int64,
-            'fs_name': pl.String,
-            'fs_size_bytes': pl.Int64,
-            'platform_display_name': pl.String
+            'id': int,
+            'name': str,
+            'platform_slug': str,
+            'platform_id': int,
+            'fs_name': str,
+            'fs_size_bytes': int,
+            'platform_display_name': str
         }
 
-        # Strip all fields except essential ones before processing with polars
+        # Strip all fields except essential ones
         # Make sure that the data being processed is ONLY the necessary data.
-        filtered_items = []
-        for item in data['items']:
-            filtered_item = {k: v for k, v in item.items() if k in library_columns.keys()}
-            filtered_items.append(filtered_item)
-
-        library = pl.from_dicts(filtered_items, schema=library_columns)
-
-        # Each game stores its non-unique platform slug, so use categorical dtype
-        # avoids repeating the same string for every game on a given platform...might make a difference for big libraries
-        library = library.with_columns(
-            pl.col('platform_slug').cast(pl.Categorical)
-        )
+        library = [{k: v for k, v in item.items() if k in library_columns} for item in data['items']]
 
         platform_map = cls._load_platform_mapping()
 
@@ -130,24 +119,22 @@ class RetroGameServer:
         return len(self.library)
 
     def size_gb(self):
-        return round(self.library['fs_size_bytes'].sum() / 1e9, 2)
+        return round(sum(g['fs_size_bytes'] for g in self.library) / 1e9, 2)
 
     def __repr__(self):
-        platform_count = self.library['platform_slug'].n_unique()
+        platform_count = len({g['platform_slug'] for g in self.library})
         return (f"RetroGameServer(games={self.count()}, "
                 f"size_gb={self.size_gb()}, "
                 f"platforms={platform_count})")
 
     def summary(self, verbose=True):
         print(f"Games: {self.count()}, Library Size: {self.size_gb()} GB")
-        print()
-        platforms = self.library.group_by('platform_slug').agg(
-            pl.col('name').alias('games')
-        )
-        for idx, row in enumerate(platforms.iter_rows(named=True)):
-            platform = row['platform_slug']
-            games = row['games']
-            print(f"┌─ {platform}: {len(games)} game(s)")
+        platforms = defaultdict(list)
+        for g in self.library:
+            platforms[g['platform_slug']].append(g['name'])
+        
+        for idx, (platform_slug, games) in enumerate(platforms.items()):
+            print(f"┌─ {platform_slug}: {len(games)} game(s)")
             if verbose:
                 for game in games:
                     print(f"│  - {game}")
@@ -470,27 +457,22 @@ class LibraryScanner:
                 matched_romm_slug = romm_library.get_romm_platform(game.platform)
                 logger.debug(f"{game.name} -- Matched platform {game.platform} to slug {matched_romm_slug}.")
                 if matched_romm_slug is not None:
-                    platform_games = romm_library.library.filter(
-                        pl.col('platform_slug') == matched_romm_slug
-                    )
+                    platform_games = [g for g in romm_library.library if g['platform_slug'] == matched_romm_slug]
+                    # platform_games = romm_library.library.filter(
+                    #     pl.col('platform_slug') == matched_romm_slug
+                    # )
                 else:  # fallback to directly check romm slug vs detected game.platform
-                    platform_games = romm_library.library.filter(
-                        pl.col('platform_slug') == game.platform
-                    )
+                    platform_games = [g for g in romm_library.library if g['platform_slug'] == game.platform]
                 
                 # Logic here checks for a column match to *fs_name*, not "name" from romm's api output.
                 # This is because ROMM strips regions and rewrites the filename for a cleaned up name, while Retroarch save files and states use the filename directly.
                 # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
                 # romm_library.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
                 #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
-                matching_rows = platform_games.filter(
-                    pl.col('fs_name').str.contains(game.name, literal=True)
-                )
+                matching_game_entry = [g for g in platform_games if game.name in g['fs_name']]  # list that's expected to have one match
 
-                if matching_rows.height > 0:
-                    # Convert DataFrame row to dictionary and populate ROMM data
-                    romm_row = matching_rows.row(0, named=True)
-                    game.set_romm_data(romm_row)
+                if len(matching_game_entry) > 0:
+                    game.set_romm_data(matching_game_entry[0])
                 else:
                     # Game not found in ROMM library
                     logger.warning(f"Could not match {game.name} with platform '{game.platform}' to ROMM server. Check your platform_mapping.yaml and verify that this game is on the ROMM server.")
