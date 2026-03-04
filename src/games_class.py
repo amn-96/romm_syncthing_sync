@@ -115,11 +115,11 @@ class Game:
     def set_romm_data(self, romm_row: Dict) -> None:
         """Populate RomM data from a library row (from RetroGameServer.library DataFrame).
         """
-        self.romm_id = romm_row.get('id')
-        self.romm_name = romm_row.get('name')
-        self.romm_platform = romm_row.get('platform_slug')
-        self.romm_platform_id = romm_row.get('platform_id')
-        self.romm_fs_size = float(romm_row.get('fs_size_bytes')) / 2**20  # in MB
+        self.romm_id = romm_row['id']
+        self.romm_name = romm_row['name']
+        self.romm_platform = romm_row['platform_slug']
+        self.romm_platform_id = romm_row['platform_id']
+        self.romm_fs_size = float(romm_row['fs_size_bytes']) / 2**20  # in MB
         self.is_matched = True
 
     def fetch_romm_saves(self):
