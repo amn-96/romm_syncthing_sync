@@ -32,7 +32,7 @@ class RommSaves:
             "rom_id": rom_id,
             "platform_id": platform_id
         }
-        response = requests.get(url, auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password), params=params)
+        response = requests.get(url, params=params, **self.romm_user._auth_kwargs())
         logger.debug(f"GET {url} - {response.status_code}")
         return response.json()
 
@@ -53,9 +53,9 @@ class RommSaves:
             url = f"{self.romm_user.url}/api/saves/"
             response = requests.post(
                 url,
-                auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
                 params=params,
-                files=files
+                files=files,
+                **self.romm_user._auth_kwargs()
             )
             logger.debug(f"POST {url} - {response.status_code}")
             return response.json()
@@ -85,8 +85,8 @@ class RommSaves:
             url = f"{self.romm_user.url}/api/saves/{id}"
             response = requests.put(
                 url,
-                auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                files=files
+                files=files,
+                **self.romm_user._auth_kwargs()
             )
             logger.debug(f"PUT {url} - {response.status_code}")
             return response.json()
@@ -115,7 +115,7 @@ class RommStates:
             "rom_id": rom_id,
             "platform_id": platform_id
         }
-        response = requests.get(url, auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password), params=params)
+        response = requests.get(url, params=params, **self.romm_user._auth_kwargs())
         logger.debug(f"GET {url} - {response.status_code}")
 
         return response.json()
@@ -149,9 +149,9 @@ class RommStates:
                 url = f"{self.romm_user.url}/api/states/"
                 response = requests.post(
                     url,
-                    auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
                     params={"rom_id": rom_id, 'emulator': emulator},
-                    files=files
+                    files=files,
+                    **self.romm_user._auth_kwargs()
                 )
                 logger.debug(f"POST {url} - {response.status_code}")
                 return response.json()
@@ -191,8 +191,8 @@ class RommStates:
                 url = f"{self.romm_user.url}/api/states/{id}"
                 response = requests.put(
                     url,
-                    auth=HTTPBasicAuth(self.romm_user.user, self.romm_user.password),
-                    files=files
+                    files=files,
+                    **self.romm_user._auth_kwargs()
                 )
                 logger.debug(f"PUT {url} - {response.status_code}")
                 return response.json()
@@ -202,7 +202,7 @@ class RommStates:
 
 
 class RommUser:
-    """API settings and HTTP Basic Authentication credentials for a ROMM user.
+    """API settings and authentication credentials for a ROMM user.
 
     The lazy-loaded saves and states properties are used as default factories for SaveState/SaveFile dataclass instantiation for nice Save and State file api request syntax.
     """
@@ -212,7 +212,9 @@ class RommUser:
                  romm_password: str = os.getenv("ROMM_PASSWORD", ""),
                  romm_base_dir: Path = Path(os.getenv("ROMM_BASE_DIR", "")),
                  romm_container_name: str = os.getenv("ROMM_CONTAINER_NAME", "rommapp"),
-                 api_limit: int = int(os.getenv("ROMM_API_LIMIT", "50"))):
+                 api_limit: int = int(os.getenv("ROMM_API_LIMIT", "50")),
+                 auth_type: str = os.getenv("ROMM_AUTH_TYPE", "http"),
+                 romm_api_token: str = os.getenv("ROMM_API_TOKEN", "")):
 
         self.url = romm_url
         self.user = romm_username
@@ -220,8 +222,15 @@ class RommUser:
         self.romm_base_dir = romm_base_dir
         self.romm_container_name = romm_container_name
         self.api_limit = api_limit
+        self.auth_type = auth_type
+        self.api_token = romm_api_token
         self._saves = None
         self._states = None
+
+    def _auth_kwargs(self) -> dict:
+        if self.auth_type == "api":
+            return {"headers": {"Authorization": f"Bearer {self.api_token}"}}
+        return {"auth": HTTPBasicAuth(self.user, self.password)}
 
     @property
     def saves(self) -> RommSaves:
@@ -269,8 +278,8 @@ class RommUser:
             url = f"{self.url}/api/roms/"
             response = requests.get(
                 url,
-                auth=HTTPBasicAuth(self.user, self.password),
-                params=params
+                params=params,
+                **self._auth_kwargs()
             )
             logger.debug(f"GET {url} - {response.status_code} (offset: {offset}, limit: {limit})")
 
