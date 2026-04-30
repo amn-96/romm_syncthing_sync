@@ -116,12 +116,11 @@ Either `ALL_SYNC_FOLDER` or BOTH `SAVE_SYNC_FOLDER` and `STATE_SYNC_FOLDER` are 
 ### `SYNC_MODE` (required) 
 Two options here:
 - "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the sync folders.
-   - `WATCHDOG_DELAY_SECONDS` is the amount of time it'll wait for a period of no file system activity once a change is detected. Default is 60 seconds. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
 - "periodic": runs the full sync between your local library and RomM library every `SYNC_INTERVAL_SECONDS`. 
    - Simpler but if you have a large library, syncs may take a while because it queries the RomM API for every single save and state you have.
    - I have about 40 different games synced with 1 save and a couple states each, running on the same machine as the instance, and a full sync with no changes takes ~20 seconds.
 
-The default is the incremental sync and I'd stick to that.
+The default is the incremental sync. I generally recommend using the incremental sync.
 
 #### OPTIONALS
 - `WATCHDOG_DELAY_SECONDS` (`watch` mode only)
@@ -130,7 +129,7 @@ The default is the incremental sync and I'd stick to that.
 - `SYNC_INTERVAL_SECONDS` (`periodic` mode only)
     - sync interval for the full sync. A full sync can take a while, especially for larger libraries. Default = 1800s (30 minutes).
 - `FULL_INITIAL_SYNC` (both)
-    - Exposed in v1.1.0 and changed to default `True`. This enables a full initial sync to RomM on app startup. Previously, the incremental sync would only push files when it saw changes, which might not have been expected.
+    - Exposed in v1.1.0 and changed to default `True`. This enables a full initial sync to RomM on app startup. Previously, the incremental sync would only push files when it saw changes, which could lead to unexpectedly missing files.
     - Options: `True`, `False`, `Force`. Force is the same behavior as `FORCE_PUSH_SYNC`, but only does it on app startup.
 - `FORCE_PUSH_SYNC` (both)
     - Push all changed save files and states to RomM regardless if RomM's state is newer. This is a little dangerous. Defaults to `False`.
@@ -152,6 +151,6 @@ docker compose up -d
 That oughta be it...now it should just work™ and you should soon see all your saves and states in RomM!
 
 # Known Issues
-- Retroarch's state screenshots are not linked to the corresponding state file on the RomM server. I [submitted a ticket for this](https://github.com/rommapp/romm/issues/3031#issuecomment-3936828273) and it should be addressed in the next RomM release >4.6.1.
-- Right now, Syncthing only PUSHES to RomM. When I have some free time, I plan to implement sync in the other direction.
-- Only supports HTTP Basic Authentication with RomM; no OAuth/OIDC. You may still use OIDC with RomM (I do), but I don't think you can disable HTTP authentication in the RomM configuration.
+~~- Retroarch's state screenshots are not linked to the corresponding state file on the RomM server. I [submitted a ticket for this](https://github.com/rommapp/romm/issues/3031#issuecomment-3936828273) and it should be addressed in the next RomM release >4.6.1.~~ This has been addressed!
+- Right now, Syncthing only PUSHES to RomM. When I have some more free time, I plan to figure out how to implement sync in the other direction.
+~~- Only supports HTTP Basic Authentication with RomM; no OAuth/OIDC. You may still use OIDC with RomM (I do), but I don't think you can disable HTTP authentication in the RomM configuration.~~ Addressed in version `1.4.0`. You can now either use "http" or "api" auth types. See `.env.example`.
