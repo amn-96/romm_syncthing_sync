@@ -47,12 +47,14 @@ Gaming Devices (RetroArch, etc.)
 ```
 
 # Usage
-I tried to make this as hands-off of a setup as possible. As of version `1.2.0`, I have hosted the docker image on ghcr.io, so the only files you will need are `docker-compose.yml` and `.env.example`.
+I tried to make this as hands-off of a setup as possible. The only files you will need are `docker-compose.yml` and `.env.example`. The included compose file is set up to pull the latest image.
 
 I didn't account for every possible use case; generally, this will work best if you have saves and states synced and sorted by platform with a single RomM user. The app mounts all your data read-only, so it should be safe to experiment with something like multiple instances if you'd like to sync save data for multiple RomM users at once. 
 
 ## Get the Files
-Download `docker-compose.yml`, `.env.example`, and `platform_mapping.yaml` (if desired) to the directory of your choice. Typically, you would rename `.env.example` to `.env` and update the corresponding line in `docker-compose.yml` accordingly (`env_file: .env`), but they will work fine together as written. The included docker compose is just the minimum configuration required for the app to run.
+Download `docker-compose.yml`, `.env.example`, and `platform_mapping.yaml` (if desired) to the directory of your choice. Typically, you would rename `.env.example` to `.env` and update the corresponding line in `docker-compose.yml` accordingly (`env_file: .env`), but they will work fine together as written. 
+
+The included docker compose is just the minimum configuration required for the app to run.
 
 ## Configure
 `docker-compose.yml` is written such that you should not need to edit it at all. Instead, all variables are configured in `.env`. Edit the following variables according to your RoMm and server configuration:
@@ -62,17 +64,30 @@ Download `docker-compose.yml`, `.env.example`, and `platform_mapping.yaml` (if d
 **`ROMM_URL`:** (required)
 Your RomM instance's address. 
 
-**`ROMM_USERNAME`**: (required)
+**`ROMM_AUTH_TYPE`:** (required)
+Authentication type for RomM. Options are "http" or "api". 
+
+"api" is the default and is recommended so that publically hosted RomM instances can be locked behind OIDC only.
+
+**`ROMM_API_TOKEN`**: (recommend; required for api auth)
+
+Your API token for RomM. This is required when `ROMM_AUTH_TYPE`=api. You can find this token by clicking on your profile image in the bottom left corner of the RomM UI --> "Client API Tokens" --> Create. Even though `romm_syncthing_sync` doesn't actually have any code that can delete your library, I recommend limiting the permissions just to be safe. These are the permissions I use. They don't allow writing to the actual rom library, collections, or users. 
+
+![Limited API Token Permissions](docs/api_token_permissions.png)   
+
+**`ROMM_USERNAME`**: (required for http auth)
 Your username in RomM.
 
-**`ROMM_PASSWORD`**: (required)
+**`ROMM_PASSWORD`**: (required for http auth)
 Your password for RomM.
 
 **`ROMM_API_LIMIT`**: (optional)
 Pagination limit for pulling the full list of ROM's down from RomM. Default follows RomM's default (50 items / request). If you have a very large library, you could try increasing this to speed up initial library build, but you may run into API issues. Changing this is generally not needed; most of the library build is spent getting each save and state catalogued.
 
+
 ### Sync Configuration
-This app will allow two different modes:
+This app allows you to use one of two different sync modes:
+
 #### Single Sync Folder
 This is similar to Knulli's default. All saves and states are sorted by content directory but placed in the same parent folder, organized like:
 ```
@@ -152,5 +167,8 @@ That oughta be it...now it should just work™ and you should soon see all your 
 
 # Known Issues
 ~~- Retroarch's state screenshots are not linked to the corresponding state file on the RomM server. I [submitted a ticket for this](https://github.com/rommapp/romm/issues/3031#issuecomment-3936828273) and it should be addressed in the next RomM release >4.6.1.~~ This has been addressed!
-- Right now, Syncthing only PUSHES to RomM. When I have some more free time, I plan to figure out how to implement sync in the other direction.
+
 ~~- Only supports HTTP Basic Authentication with RomM; no OAuth/OIDC. You may still use OIDC with RomM (I do), but I don't think you can disable HTTP authentication in the RomM configuration.~~ Addressed in version `1.4.0`. You can now either use "http" or "api" auth types. See `.env.example`.
+
+- Right now, Syncthing only PUSHES to RomM. When I have some more free time, I plan to figure out how to implement sync in the other direction.
+
