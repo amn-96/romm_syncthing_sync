@@ -324,6 +324,8 @@ class WatchdogSyncManager:
             logger.info("---------- Continuing to watch for file changes ----------")
             with self.timer_lock:
                 self.is_syncing = False
+            if self.pending_events:  # arrived mid-sync, when schedule_sync declined to start a timer
+                self.schedule_sync()
 
     def cancel_pending(self):
         """Cancel any pending timer."""
@@ -344,7 +346,8 @@ class PeriodicSyncManager:
     def run(self):
         """Run the periodic sync loop. Blocks until stop() is called."""
         try:
-            while not self.stop_event.is_set():
+            # startup already ran the initial sync (or skipped it per FULL_INITIAL_SYNC), so wait first
+            while not self.stop_event.wait(timeout=self.sync_interval):
                 logger.info("Running periodic sync...")
                 try:
                     t0 = tpc()
@@ -352,8 +355,6 @@ class PeriodicSyncManager:
                     logger.info(f"Periodic sync completed in {round(tpc() - t0, 2)} s.")
                 except Exception as e:
                     logger.error(f"Sync failed: {e}")
-
-                self.stop_event.wait(timeout=int(self.sync_interval))
         finally:
             logger.info("Exiting ('Periodic' sync mode)...")
 

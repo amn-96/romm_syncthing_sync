@@ -6,12 +6,14 @@ A utility for syncing emulator save files across your gaming devices and backing
 
 # Overview
 
-I've found that RomM is a nice way to have a "source of truth" for my game library, but for now, full-featured clients like [Grout](https://github.com/rommapp/grout) are not supported for all handhelds and RomM's planned sync feature is not ready (yet). If you have multiple handhelds whose saves are kept in sync with syncthing and want a way to have those in RomM so you can switch back and forth at will, **romm_sync** might help! 
+I've found that RomM is a nice way to have a "source of truth" for my game library but between the many different frontends available on android and the ever-evolving open source toolset, I wanted self-hosted curation of my gaming content that could work across Syncthing, frontends, linux devices, and any PC running RomM for in-browser emulation. 
+
+If you have multiple handhelds and devices of various form factors whose saves are kept in sync with syncthing and want a way to have those in RomM so you can switch back and forth at will, **romm_sync** might help! 
 
 This all started when I set up Syncthing between my devices with Retroarch-based OS's (Android, MuOS, Knulli,...) and Minarch-based OS's (MinUI, NextUI) and none of the folders lined up properly and forced me into making a tedious Syncthing folder setup. Doable yes, but annoying. I had my RomM instance sitting right there and an opportunity to practice my Python for work so now...here we are.
 
 ## What you'll need:
-- A server or NAS of some kind that hosts a central file sync location. I use Syncthing, but technically it could be anything.
+- A server or NAS of some kind that hosts a central file sync location. I use Syncthing.
 - A self hosted instance of RomM that is accessible by the machine on which this app is deployed.
 - Docker to deploy the app.
 
@@ -76,17 +78,19 @@ Authentication type for RomM. Options are "http" or "api".
 
 "api" is the default and is recommended so that publically hosted RomM instances can be locked behind OIDC only.
 
-**`ROMM_API_TOKEN`**: (recommend; required for api auth)
+**`ROMM_API_TOKEN`**: (recommended; required for api auth)
 
-Your API token for RomM. This is required when `ROMM_AUTH_TYPE`=api. You can find this token by clicking on your profile image in the bottom left corner of the RomM UI --> "Client API Tokens" --> Create. Even though `romm_syncthing_sync` doesn't actually have any code that can delete your library, I recommend limiting the permissions just to be safe. These are the permissions I use. They don't allow writing to the actual rom library, collections, or users. 
+Your API token for RomM. This is required when `ROMM_AUTH_TYPE`=api. 
+
+You can get a token by clicking on your profile image in your RomM webUI (top right on the refreshed UI) --> "Client API Tokens" --> Create. Even though `romm_syncthing_sync` doesn't actually have any code that can delete your library, I recommend limiting the permissions just to be safe. These are the permissions I use. They don't allow writing to the actual rom library, collections, or users. 
 
 ![Limited API Token Permissions](docs/api_token_permissions.png)   
 
-**`ROMM_USERNAME`**: (required for http auth)
-Your username in RomM.
+**`ROMM_USERNAME`**:
+Your username in RomM. Not required if using API auth.
 
-**`ROMM_PASSWORD`**: (required for http auth)
-Your password for RomM.
+**`ROMM_PASSWORD`**: 
+Your password for RomM. Leave empty if using API auth.
 
 **`ROMM_API_LIMIT`**: (optional)
 Pagination limit for pulling the full list of ROM's down from RomM. Default follows RomM's default (50 items / request). If you have a very large library, you could try increasing this to speed up initial library build, but you may run into API issues. Changing this is generally not needed; most of the library build is spent getting each save and state catalogued.
@@ -146,6 +150,8 @@ If you also sort your saves and/or states by core (**in addition to "by content 
         └── Game Name.state.png
 ```
 
+This was added in `1.6.0` to try and mitigate the quagmire of syncthing folder-fu needed for CFW's that are irritatingly opinionated on how they layout saves and states (*cough* muos pickles *cough*).
+
 ### `SYNC_MODE` (required) 
 Two options here:
 - "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the sync folders.
@@ -184,9 +190,5 @@ docker compose up -d
 That oughta be it...now it should just work™ and you should soon see all your saves and states in RomM!
 
 # Known Issues
-~~- Retroarch's state screenshots are not linked to the corresponding state file on the RomM server. I [submitted a ticket for this](https://github.com/rommapp/romm/issues/3031#issuecomment-3936828273) and it should be addressed in the next RomM release >4.6.1.~~ This has been addressed!
-
-~~- Only supports HTTP Basic Authentication with RomM; no OAuth/OIDC. You may still use OIDC with RomM (I do), but I don't think you can disable HTTP authentication in the RomM configuration.~~ Addressed in version `1.4.0`. You can now either use "http" or "api" auth types. See `.env.example`.
-
-- Right now, Syncthing only PUSHES to RomM. When I have some more free time, I plan to figure out how to implement sync in the other direction.
+- Right now, Syncthing only PUSHES to RomM. When I have some more free time, I plan to figure out how to implement sync in the other direction. (Author's Note: Haven't had a lot of time for this, but I've been testing locally and going in circles on reliable conflict resolution. I am coming to the conclusion that I should really just vibe code a WebUI with some defaults similar to syncthing's `.stversion` to deal with this. More soon.)
 
