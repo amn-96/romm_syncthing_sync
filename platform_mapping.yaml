@@ -70,14 +70,18 @@ neogeoaes:
 neogeomvs:
   - neogeomvs
 
-turbografx-cd:
-  - turbografx-cd
+tg16:
+  - tg16
+  - tg-16
   - turbografx
   - turbografx-16
   - pc-engine
   - pcengine
-  - tg16
-  - tg-16
+
+turbografx-cd:
+  - turbografx-cd
+  - pcenginecd
+  - tgcd
 
 fds:
   - fds
