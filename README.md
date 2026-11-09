@@ -1,22 +1,24 @@
-# romm_sync
+# RomM-Syncthing-Sync
+
+![icon](docs/romm_sync-icon.png)
 
 A utility for syncing emulator save files across your gaming devices and backing them up to [RomM](https://romm.app/).
 
 # Overview
 
-I've found that Romm is a nice way to have a "source of truth" for my game library, but for now, full-featured clients like [Grout](https://github.com/rommapp/grout) are not supported for all handhelds and Romm's planned sync feature is not ready (yet). If you have multiple handhelds whose saves are kept in sync with syncthing and want a way to have those in RomM so you can switch back and forth at will, **romm_sync** might help! 
+I've found that RomM is a nice way to have a "source of truth" for my game library, but for now, full-featured clients like [Grout](https://github.com/rommapp/grout) are not supported for all handhelds and RomM's planned sync feature is not ready (yet). If you have multiple handhelds whose saves are kept in sync with syncthing and want a way to have those in RomM so you can switch back and forth at will, **romm_sync** might help! 
 
-This all started when I set up Syncthing between my devices with Retroarch-based OS's (Android, MuOS, Knulli,...) and Minarch-based OS's (MinUI, NextUI) and none of the folders lined up properly and forced me into making a tedious Syncthing folder setup. Doable yes, but annoying. I had my Romm instance sitting right there and an opportunity to practice my Python for work so now...here we are.
+This all started when I set up Syncthing between my devices with Retroarch-based OS's (Android, MuOS, Knulli,...) and Minarch-based OS's (MinUI, NextUI) and none of the folders lined up properly and forced me into making a tedious Syncthing folder setup. Doable yes, but annoying. I had my RomM instance sitting right there and an opportunity to practice my Python for work so now...here we are.
 
 ## What you'll need:
 - A server or NAS of some kind that hosts a central file sync location. I use Syncthing, but technically it could be anything.
-- A self hosted instance of Romm that is accessible by the machine on which this app is deployed.
+- A self hosted instance of RomM that is accessible by the machine on which this app is deployed.
 - Docker to deploy the app.
 
 ## What this does:
 1. Gaming devices sync save files to a central location via Syncthing.
 2. `romm_sync` detects new/modified saves and states in this "local library"
-3. Matches the contents of your library with the content on your Romm instance.
+3. Matches the contents of your library with the content on your RomM instance.
 
 ## Some caveats
 
@@ -29,11 +31,11 @@ I wrote this mainly for my uses, so it's probably not taking everybody possible 
 ### Possible incompatibilities
 It *does not* sort states by core, though I had some leftover different cores for Nintendo DS that seemed to work ok. This will work best with save (.srm) files, and, if you're consistent in the cores you use, .state files should "just work" as well.
 
-The implicit assumption here is that the game files (ROM, with one M) on your device are *already* the same files as the ROM's in your Romm library. Set up your Romm library before trying to run this app. A tip that really helped me is that Romm allows you to map your *local* directory names to *their supported platform names* ("slugs") to make library management easier. [See the docs here.](https://docs.romm.app/latest/Getting-Started/Configuration-File/?h=platform+name#custom-folder-names) 
+The implicit assumption here is that the game files (ROM, with one M) on your device are *already* the same files as the ROM's in your RomM library. Set up your RomM library before trying to run this app. A tip that really helped me is that RomM allows you to map your *local* directory names to *their supported platform names* ("slugs") to make library management easier. [See the docs here.](https://docs.romm.app/latest/Getting-Started/Configuration-File/?h=platform+name#custom-folder-names) 
 
-### This is NOT a Romm Client. 
+### This is NOT a RomM Client. 
 
-It's just a one way push to Romm from Syncthing with the expectation that you use a real RomM client to pull from Romm to your handheld. (see Grout, for example). This just makes it easier to have access to Romm's library organization niceties if you have some devices that don't support a Romm client.
+It's just a one way push to RomM from Syncthing with the expectation that you use a real RomM client to pull from RomM to your handheld. (see Grout, for example). This just makes it easier to have access to RomM's library organization niceties if you have some devices that don't support a RomM client.
 
 # Architecture
 

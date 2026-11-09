@@ -8,6 +8,7 @@ from loguru import logger
 from collections import namedtuple
 
 from .config import get_config
+from .cores import core_of
 
 if TYPE_CHECKING:
     from src.romm_api_func import RommSaves, RommStates
@@ -37,6 +38,7 @@ class SaveFile:
     modified_at: datetime
     in_sync: bool = False  # initialize with False so it has to be checked
     id: int | None = None
+    emulator: str | None = None  # core folder the file sits in; None if directly in the platform folder
 
 
 @dataclass
@@ -79,7 +81,13 @@ class Game:
         # modification time -- convert to UTC for consistency (RomM API returns in UTC
         for save_path in game_dict_entry['saves']:
             save_mtime = datetime.fromtimestamp(save_path.stat().st_mtime, tz=timezone.utc)
-            self.local_save_files.append(SaveFile(path=save_path, platform_id=self.romm_platform_id, modified_at=save_mtime))
+            existing = next((s for s in self.local_save_files if s.path.name == save_path.name), None)
+            if existing is not None and existing.modified_at >= save_mtime:
+                continue  # RomM keeps one save per filename, so only the newest copy across core folders is synced
+            if existing is not None:
+                self.local_save_files.remove(existing)
+            self.local_save_files.append(SaveFile(path=save_path, platform_id=self.romm_platform_id, modified_at=save_mtime,
+                                                  emulator=core_of(save_path, self.platform)))
             logger.debug(f"Found save: {save_path.name} for {self.name}.")
 
     def add_local_states(self, game_dict_entry: dict) -> None:
@@ -107,8 +115,11 @@ class Game:
             else:
                 save_slot = -1   # -1 is an auto-save from Retroarch
 
+            existing = self.local_state_files.get(save_slot)
+            if existing is not None and existing.modified_at >= state_mtime:
+                continue  # RomM keeps one state per filename, so only the newest copy across core folders is synced
             self.local_state_files[save_slot] = SaveState(path=state_path, platform_id=self.romm_platform_id, modified_at=state_mtime,
-                                                          slot=save_slot, screenshot=screenshot_path, emulator=None)
+                                                          slot=save_slot, screenshot=screenshot_path, emulator=core_of(state_path, self.platform))
             logger.debug(f"Found state: {state_path.name} for {self.name}{screenshot_string}")
 
     # region RomM Functions
@@ -138,7 +149,8 @@ class Game:
                 SaveFile(path=Path(s['file_path']) / s['file_name'],
                          platform_id=self.romm_platform_id,
                          modified_at=save_mtime,
-                         id=s['id']))
+                         id=s['id'],
+                         emulator=s['emulator']))
         logger.debug(f"Fetched {len(self.romm_save_files)} RomM save(s) for {self.name}.")
         return response
 
@@ -171,7 +183,7 @@ class Game:
                                                    modified_at=state_mtime,
                                                    id=s['id'],
                                                    slot=save_slot,
-                                                   emulator=None))
+                                                   emulator=s['emulator']))
         logger.debug(f"Fetched {len(self.romm_state_files)} RomM state(s) for {self.name}.")
         return response
     # endregion
@@ -190,7 +202,8 @@ class Game:
             raise TypeError("Provided save data is not expected type SaveState or SaveFile")
 
         matched = [LocalRemoteMatch(local=savedata, romm=r, api_ops=api_ops)
-                   for r in romm_items if (savedata.path.name == r.path.name)]
+                   for r in romm_items if (savedata.path.name == r.path.name
+                                    and (sync_type == "state" or savedata.emulator == r.emulator))]  # RomM keeps one state row per filename but one save row per (filename, emulator)
 
         if len(matched):
             if len(matched) > 1:
@@ -208,11 +221,15 @@ class Game:
             if sync_this_file or force:
                 debug_force_str = "(FORCE)" if force else ""
                 logger.debug(f"Updating {sync_type} in RomM: {m.local.path.name} {debug_force_str}")
-                api_ops.update(obj=savedata, rom_id=self.romm_id, id=m.romm.id)
+                if savedata.emulator != m.romm.emulator:
+                    # PUT can't change the emulator; re-POSTing the same filename repoints the existing row
+                    api_ops.add(obj=savedata, rom_id=self.romm_id, emulator=savedata.emulator)
+                else:
+                    api_ops.update(obj=savedata, rom_id=self.romm_id, id=m.romm.id)
 
         else:  # local present but not in romm --> add
             logger.debug(f"Adding {sync_type} to RomM: {savedata.path.name}")
-            api_ops.add(obj=savedata, rom_id=self.romm_id)
+            api_ops.add(obj=savedata, rom_id=self.romm_id, emulator=savedata.emulator)
 
     def sync_local_saves_to_remote(self, force: bool = False):
         """Updates/Adds local save files for the game to its romm counterpart.

@@ -9,6 +9,7 @@ import yaml
 
 # program imports
 from .games_class import Game
+from .cores import normalize_core
 from .romm_api_func import RommUser
 from .config import METADATA_FILE_FILTERS, get_config
 
@@ -254,6 +255,8 @@ class LocalLibrary:
             # Extract platform and game name from path
             # Expected structure: sync_folder/platform_name/game_name.ext
             platform_dir = event_file_path.parent
+            if normalize_core(platform_dir.name):  # file is in a core subfolder: sync_folder/platform_name/core/game_name.ext
+                platform_dir = platform_dir.parent
             platform_name = platform_dir.name
             game_name = event_file_path.stem
 
@@ -329,18 +332,21 @@ class LibraryScanner:
     def _collect_games(platform_dir: Path) -> List[Path]:
         """Discover and filter all game files in a platform directory.
 
-        Iterates through files in the platform directory and returns a list of valid game files,
-        excluding metadata files and directories defined in METADATA_FILE_FILTERS.
+        Iterates through files in the platform directory and in its core subfolders (e.g. gba/mGBA), and returns a list
+        of valid game files, excluding metadata files and directories defined in METADATA_FILE_FILTERS.
+        Other subfolders (emulator-internal dirs like gc/User) are ignored.
         """
         files = []
+        core_dirs = [d for d in platform_dir.iterdir() if d.is_dir() and normalize_core(d.name)]
 
-        for file_path in platform_dir.iterdir():
-            if not file_path.is_file():
-                continue
-            # Skip various metadata files and directories
-            if any(filter_str in file_path.name for filter_str in METADATA_FILE_FILTERS):
-                continue
-            files.append(file_path)
+        for scan_dir in [platform_dir, *core_dirs]:
+            for file_path in scan_dir.iterdir():
+                if not file_path.is_file():
+                    continue
+                # Skip various metadata files and directories
+                if any(filter_str in file_path.name for filter_str in METADATA_FILE_FILTERS):
+                    continue
+                files.append(file_path)
 
         return files
 
