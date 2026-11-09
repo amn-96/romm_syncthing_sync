@@ -38,7 +38,8 @@ class RommSaves:
 
     def add(self,
             obj: 'SaveFile',
-            rom_id: int):
+            rom_id: int,
+            emulator: str | None = None):
         """Upload a new save file to ROMM. Pulls the relevant info from the SaveFile object."""
         local_filepath: Path = obj.path
 
@@ -48,7 +49,7 @@ class RommSaves:
 
         with open(local_filepath, 'rb') as f:
             files = {'saveFile': (local_filepath.name, f)}
-            params = {"rom_id": rom_id}
+            params = {"rom_id": rom_id, "emulator": emulator}
 
             url = f"{self.romm_user.url}/api/saves/"
             response = requests.post(
