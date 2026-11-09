@@ -1,5 +1,6 @@
 """Dataclass that contains a single game's local and remote (romm) information."""
 # Imports - builtins
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime, timezone
@@ -15,6 +16,15 @@ if TYPE_CHECKING:
 
 
 LocalRemoteMatch = namedtuple('LocalRemoteMatch', ['local', 'romm', 'api_ops'])
+
+
+def state_slot(extension: str) -> int:
+    """Slot number from a state file extension. Handles RetroArch "state"/"stateN" and melonDS "mlN".
+    A bare "state"/"ml" is slot 0; anything else (e.g. "auto" from ".state.auto") is the RetroArch autosave, -1."""
+    match = re.fullmatch(r"(?:state|ml)(\d*)", extension.split(".")[-1])
+    if match is None:
+        return -1
+    return int(match.group(1) or 0)
 
 
 @dataclass(slots=True)
@@ -106,14 +116,7 @@ class Game:
                 screenshot_path = None
                 screenshot_string = ""
 
-            # save slot
-            if "state" in state_path.name.split(".")[-1] or "ml" in state_path.name.split(".")[-1]:  # if "stateX" is last part, this is a save slot
-                try:
-                    save_slot = int(state_path.name.split(".")[-1][-1])
-                except ValueError:  # no number at end means slot 0
-                    save_slot = 0
-            else:
-                save_slot = -1   # -1 is an auto-save from Retroarch
+            save_slot = state_slot(state_path.name)
 
             existing = self.local_state_files.get(save_slot)
             if existing is not None and existing.modified_at >= state_mtime:
@@ -168,15 +171,7 @@ class Game:
             # modification time -- convert to UTC for consistency (RomM API returns in UTC)
             state_mtime = datetime.fromisoformat(s['updated_at'])
 
-            # save slot
-            state_ext = s["file_extension"].split("state")
-            if state_ext[1]:
-                try:  # means this is a slot ("state1" etc)
-                    save_slot = int(state_ext[-1])
-                except ValueError:  # no number at end means this is an autosave ("state.auto")
-                    save_slot = -1
-            else:  # means this is the 0th state ("state")
-                save_slot = 0   # -1 is an auto-save from Retroarch
+            save_slot = state_slot(s["file_extension"])
 
             self.romm_state_files.append(SaveState(path=Path(s['file_path']) / s['file_name'],
                                                    platform_id=self.romm_platform_id,
