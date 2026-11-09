@@ -21,15 +21,14 @@ def initialize_romm_sync():
 
     # First sync. Compares all save states
     logger.info("Building local and romm libraries. This may take a while for large libraries...")
-    srv, lcl = SyncOrchestrator.build_libraries(app_cfg=app_cfg)
-
     if app_cfg.FULL_INITIAL_SYNC == "false":
         logger.info("Initial sync skipped ('FULL_INITIAL_SYNC' = false).")
+        srv, lcl = SyncOrchestrator.build_libraries(app_cfg=app_cfg)
     else:
         logger.info("Performing initial sync.")
-        force_sync: bool = app_cfg.FULL_INITIAL_SYNC == "force"
-        init_state = SyncOrchestrator(local_library=lcl, romm_server=srv)
-        init_state.full_sync(force_sync=force_sync)
+        init_state = SyncOrchestrator(local_library=None, romm_server=None)  # full_sync builds both libraries
+        init_state.full_sync(force_sync=app_cfg.FULL_INITIAL_SYNC == "force")
+        srv, lcl = init_state.srv, init_state.lcl
 
     return app_cfg, srv, lcl
 

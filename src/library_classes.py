@@ -30,15 +30,15 @@ class RetroGameServer:
 
         Falls back to empty dictionary on errors, which means exact platform slug matching only.
         """
-        try:
-            platform_map_path = get_config().PLATFORM_MAP_PATH
-            logger.debug(f"Attempting to load {str(platform_map_path)}")
-            
-            data = None
+        platform_map_path = get_config().PLATFORM_MAP_PATH
+        if platform_map_path is None:
+            logger.debug("No platform mapping file configured; using exact platform slug matching.")
+            return {}
 
-            if platform_map_path is not None:
-                with open(platform_map_path, 'r') as f:
-                    data = yaml.safe_load(f)
+        try:
+            logger.debug(f"Attempting to load {str(platform_map_path)}")
+            with open(platform_map_path, 'r') as f:
+                data = yaml.safe_load(f)
 
             if data is None:
                 # safe fallback if the file is empty
@@ -150,7 +150,7 @@ class LocalLibrary:
 
     def __init__(self, sync_folders: List[Path]):
         self.sync_folders: List[Path] = sync_folders
-        self.games: Dict[str, Game] = {}
+        self.games: Dict[tuple[str, str], Game] = {}  # keyed by (platform folder name, game name)
 
     def _rescan_local_saves_and_states(self, game: Game) -> None:
         """Rescans and refreshes the existing list of save and state files for a particular game."""
@@ -204,20 +204,20 @@ class LocalLibrary:
                 logger.debug("Building 'Game' objects for local library...")
                 for game_name, file_info in games_dict.items():
                     logger.debug(f"Processing game: {game_name} ({len(file_info['saves'])} saves, {len(file_info['states'])} states)")
-                    if game_name in self.games:
-                        existing_game = self.games[game_name]
+                    if (platform_name, game_name) in self.games:
+                        existing_game = self.games[(platform_name, game_name)]
                         LibraryScanner._load_local_saves_and_states(g=existing_game, file_info=file_info)
                     else:
                         new_game = Game(name=game_name, path=file_info['path'], platform=file_info['platform'])  
                         LibraryScanner._load_local_saves_and_states(g=new_game, file_info=file_info)
-                        self.games[game_name] = new_game
+                        self.games[(platform_name, game_name)] = new_game
 
                     logger.debug(f"  Added {game_name} to library")
 
     # region Utility Functions
-    def get_game_by_name(self, game_name: str) -> Optional[Game]:
-        """Get a game from the library by name."""
-        return self.games.get(game_name)
+    def get_game(self, platform: str, game_name: str) -> Optional[Game]:
+        """Get a game from the library by platform folder name and game name."""
+        return self.games.get((platform, game_name))
 
     def get_unmatched_games(self) -> List[Game]:
         """Return list of local games that couldn't be matched to ROMM."""
@@ -254,11 +254,9 @@ class LocalLibrary:
         try:
             # Extract platform and game name from path
             # Expected structure: sync_folder/platform_name/game_name.ext
-            platform_dir = event_file_path.parent
-            if normalize_core(platform_dir.name):  # file is in a core subfolder: sync_folder/platform_name/core/game_name.ext
-                platform_dir = platform_dir.parent
+            platform_dir = LibraryScanner._platform_dir(event_file_path)
             platform_name = platform_dir.name
-            game_name = event_file_path.stem
+            game_name = LibraryScanner._parse_game_file(event_file_path)[0]
 
             # Scan platform directory and collect files for this game
             files = LibraryScanner._collect_games(platform_dir)
@@ -275,7 +273,7 @@ class LocalLibrary:
             LibraryScanner._load_local_saves_and_states(g=new_game, file_info=file_info)
 
             # Add to games dict
-            self.games[game_name] = new_game
+            self.games[(platform_name, game_name)] = new_game
             logger.info(f"[WATCHDOGSYNC] Added new game to library: {game_name}")
 
             return new_game
@@ -299,13 +297,17 @@ class LocalLibrary:
         Returns:
             List of affected Game objects (deduplicated) ready for sync operations
         """
-        game_changed_files = LibraryScanner._parse_watchdog_events(event_paths=event_paths)
+        # Only platform/ and platform/<core>/ hold saves, matching what build_local_library scans
+        scanned_paths = [p for p in event_paths if LibraryScanner._platform_dir(p).parent in self.sync_folders]
+        for skipped_path in set(event_paths) - set(scanned_paths):
+            logger.debug(f"[WATCHDOGSYNC] Ignoring file outside platform and core folders: {skipped_path}")
+        game_changed_files = LibraryScanner._parse_watchdog_events(event_paths=scanned_paths)
 
-        affected_games_dict = {}  # game_name -> Game object
+        affected_games_dict = {}  # (platform, game_name) -> Game object
 
-        for game_name, changed_files in game_changed_files.items():
+        for (platform_name, game_name), changed_files in game_changed_files.items():
             # Find or create the game
-            matching_Game = self.get_game_by_name(game_name)
+            matching_Game = self.get_game(platform_name, game_name)
             if not matching_Game:
                 logger.info(f"[WATCHDOGSYNC] New game detected: {game_name}")
                 # Use one of the changed files to add a game. It will be named the same as the ROM by save file/state convention
@@ -318,7 +320,7 @@ class LocalLibrary:
 
             # Rescan the game's directory to pick up any new/updated save files.
             self._rescan_local_saves_and_states(matching_Game)
-            affected_games_dict[game_name] = matching_Game
+            affected_games_dict[(platform_name, game_name)] = matching_Game
 
         return list(affected_games_dict.values())
     # endregion
@@ -351,6 +353,20 @@ class LibraryScanner:
         return files
 
     @staticmethod
+    def _parse_game_file(file_path: Path) -> tuple[str, str]:
+        """Game name and file type ('save', 'state' or 'state_screen') of a save/state file.
+
+        Patterns: game.state, game.state0, game.state.auto, game.ml1 (melonDS), their `.png` screenshots,
+        and anything else is a save (.srm, .sav, ...).
+        """
+        filename = file_path.name
+        if state_screen_match := re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename):
+            return state_screen_match.group(1), 'state_screen'
+        if state_match := re.match(r'^(.+?)\.(?:state(?:\d+|\.auto)?|ml\d+)$', filename):
+            return state_match.group(1), 'state'
+        return file_path.stem, 'save'
+
+    @staticmethod
     def _add_game_dict_entry(file_path: Path, platform_name: str, games_dict: dict) -> dict:
         """Process a file and return updated games_dict with its categorized content.
 
@@ -373,33 +389,7 @@ class LibraryScanner:
         Returns:
             Updated games_dict with file categorized and added
         """
-        filename = file_path.name
-
-        # Extract base game name and file type
-        # Patterns: game.state, game.state0, game.state1, game.state.auto
-        #           game.state.png, game.state0.png, game.state.auto.png
-        game_name = None
-        file_type = None
-
-        # Check for state screenshot (.state.png, .state0.png, .state.auto.png)
-        state_screen_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename)
-        if state_screen_match:
-            game_name = state_screen_match.group(1)
-            file_type = 'state_screen'
-        else:
-            # check for the actual states. RA-style and others *should* be mutually exclusive.
-            state_match = re.match(r'^(.+?)\.state(?:\d+|\.auto)?$', filename)  # general retroarch state extension
-            melonds_match = re.match(r'^(.+?)\.ml\d+$', filename)  # melonDS state extension ".ml{n}"
-            if state_match:
-                game_name = state_match.group(1)
-                file_type = 'state'
-            elif melonds_match:  # melonDS state extension
-                game_name = melonds_match.group(1)
-                file_type = 'state'
-            else:
-                # Regular save file (.srm, .sav, etc.)
-                game_name = file_path.stem
-                file_type = 'save'
+        game_name, file_type = LibraryScanner._parse_game_file(file_path)
 
         # Initialize game entry if not seen before
         if game_name not in games_dict:
@@ -475,7 +465,7 @@ class LibraryScanner:
                 # For example: retroarch save srm: "Castlevania - Symphony of the Night (USA).srm", romm['name']: "Castlevania: Symphony of the Night"
                 # romm_library.library columns: 'fs_name' (full romm filename including region and extension i.e. "Metal Slug X (USA).chd")
                 #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
-                matching_game_entry = [g for g in platform_games if game.name in g['fs_name']]  # list that's expected to have one match
+                matching_game_entry = [g for g in platform_games if game.name in (g['fs_name'], Path(g['fs_name']).stem)]  # fs_name lacks an extension for multi-file games
 
                 if len(matching_game_entry) > 0:
                     game.set_romm_data(matching_game_entry[0])
@@ -491,25 +481,27 @@ class LibraryScanner:
     @staticmethod
     def _parse_watchdog_events(event_paths: List[Path]) -> dict:
         """Parse a list of watchdog events and map them to existing games."""
-        game_changed_files = {}  # game_name -> set of Path objects
+        game_changed_files = {}  # (platform, game_name) -> set of Path objects
 
         # Pre-filter captured events for the relevant file changes.
         # If we don't do this, every chunk that syncthing pushes will get processed. The sync is robust enough to reject these, but it clutters the logs.
         for event_path in event_paths:
-            game_name = LibraryScanner._detect_game_from_watchdog_event(event_path)
-            if game_name is not None:
-                if game_name not in game_changed_files:
-                    game_changed_files[game_name] = set()
-                game_changed_files[game_name].add(event_path)
+            game_key = LibraryScanner._detect_game_from_watchdog_event(event_path)
+            game_changed_files.setdefault(game_key, set()).add(event_path)
 
         return game_changed_files
 
     @staticmethod
-    def _detect_game_from_watchdog_event(event_path: Path) -> str | None:
-        """Extract game name from watchdog event path.
+    def _platform_dir(file_path: Path) -> Path:
+        """Platform directory of a save/state file, which is its grandparent when it sits in a core subfolder."""
+        return file_path.parent.parent if normalize_core(file_path.parent.name) else file_path.parent
+
+    @staticmethod
+    def _detect_game_from_watchdog_event(event_path: Path) -> tuple[str, str]:
+        """Extract (platform, game name) from watchdog event path.
 
         Note: Metadata files are already filtered by FileChangeHandler, so this receives only valid game files.
         """
         event = event_path.name
         logger.debug(f"[WATCHDOGSYNC] Found modified savedata: {event}.")
-        return str(event).split(".")[0]  # game name will be everything before the FIRST extension
+        return LibraryScanner._platform_dir(event_path).name, LibraryScanner._parse_game_file(event_path)[0]

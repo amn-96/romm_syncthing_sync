@@ -37,7 +37,7 @@ class Config:
                  state_sync_dir: Path | None = Path("/syncdata/states") if os.getenv("STATE_SYNC_FOLDER") else None,  # docker bind mount
                  all_sync_dir: Path | None = Path("/syncdata") if os.getenv("ALL_SYNC_FOLDER") else None,  # docker bind mount
                  watchdog_delay_seconds: int = int(os.getenv("WATCHDOG_DELAY_SECONDS", "60")),
-                 sync_mode: str = os.getenv("SYNC_MODE", "periodic"),
+                 sync_mode: str = os.getenv("SYNC_MODE", "watch"),
                  full_initial_sync: str = os.getenv("FULL_INITIAL_SYNC", "true").lower(),
                  force_push_sync: bool = os.getenv("FORCE_PUSH_SYNC", "false").lower() == "true",
                  sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
@@ -107,10 +107,12 @@ class Config:
 
         if not self.ROMM_CREDENTIALS.url:
             errors.append("ROMM Host URL is required!")
-        if not self.ROMM_CREDENTIALS.password:
-            errors.append("ROMM_PASSWORD is required!")
-        if not self.ROMM_CREDENTIALS.user:
-            errors.append("ROMM_USERNAME is required!")
+        if self.ROMM_CREDENTIALS.auth_type == "api" and not self.ROMM_CREDENTIALS.api_token:
+            errors.append("ROMM_API_TOKEN is required for api auth!")
+        if self.ROMM_CREDENTIALS.auth_type == "http" and not self.ROMM_CREDENTIALS.user:
+            errors.append("ROMM_USERNAME is required for http auth!")
+        if self.ROMM_CREDENTIALS.auth_type == "http" and not self.ROMM_CREDENTIALS.password:
+            errors.append("ROMM_PASSWORD is required for http auth!")
 
         errors += self._validate_input_directories()
 
