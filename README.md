@@ -22,14 +22,19 @@ This all started when I set up Syncthing between my devices with Retroarch-based
 
 ## Some caveats
 
-### Limited Scope of Save Support
-I wrote this mainly for my uses, so it's probably not taking everybody possible folder structure into account. My Retroarch instance is configured similar to the Knulli defaults, so it should cover common usage patterns.
+### Supported Folder Structures
+I wrote this mainly for my uses, so it's probably not taking every possible folder structure into account. It supports two specific flags in Retroarch's `Saving` settings menu.
 
-- Sort Saves by Content Directory
-- Sort States by Content Directory
+**"Sort Saves/States by Content Directory"**: Use this when you're not worried about core assignment. This is ok if you are in full control of your Retroarch config. 
+
+If you are sharing with Minarch (MinUI, NextUI) or MuOS (Pickles) or use different cores for a given platform like mGBA and gPSP for Game Boy Advance, you may want to enable **Sort Saves/States by Core**. 
+
+You can mix both, and a single library can have some files flat and some in core folders. Files in a core subfolder within a platform directory ("content directory") are sent to RomM with that core listed as their emulator.
 
 ### Possible incompatibilities
-It *does not* sort states by core, though I had some leftover different cores for Nintendo DS that seemed to work ok. This will work best with save (.srm) files, and, if you're consistent in the cores you use, .state files should "just work" as well.
+- Core folder names are matched against the cores RomM's in-browser player (EmulatorJS) supports, plus gpSP. A folder that isn't a recognised core (like `User`) is not treated as one.
+- If the same game has a save or state in more than one place (say flat and in a core folder, or under two different cores), only the most recently modified copy is synced to RomM.
+- melonDS (standalone) states (`.ml1`, `.ml2`, ...) are supported alongside RetroArch's `.state` files for sync purposes, but may not work in RomM's browser emulation since that is made for libretro.
 
 The implicit assumption here is that the game files (ROM, with one M) on your device are *already* the same files as the ROM's in your RomM library. Set up your RomM library before trying to run this app. A tip that really helped me is that RomM allows you to map your *local* directory names to *their supported platform names* ("slugs") to make library management easier. [See the docs here.](https://docs.romm.app/latest/Getting-Started/Configuration-File/?h=platform+name#custom-folder-names) 
 
@@ -107,7 +112,7 @@ For this type of sync, use ONLY:
 **ALL_SYNC_FOLDER**: the directory on your machine
 
 #### Separate Save and State Parents
-This is the way I do it because CFW's like MuOS and MinUI/NextUI put their saves and states in completely different places, but still sort by content directory. On android, you would set your save and state save locations to be different but retain the "Sort by Content Directory" (ONLY!) setting.
+This is the way I do it because CFW's like MuOS and MinUI/NextUI put their saves and states in completely different places, but still sort by content directory. On Android, you would set your save and state save locations to be different but retain the "Sort by Content Directory" (ONLY!) setting.
 ```
 {SAVE_SYNC_FOLDER}/
 ├── Nintendo 64/
@@ -129,6 +134,17 @@ For this, use:
 
 Either `ALL_SYNC_FOLDER` or BOTH `SAVE_SYNC_FOLDER` and `STATE_SYNC_FOLDER` are required.
 
+#### Sorting by Core and Content Directory
+If you also sort your saves and/or states by core (**in addition to "by content directory"**), the core folder goes inside the content directory. This is supported in either sync mode and can be mixed with states not organized by core.
+```
+{SYNC_FOLDER}/
+└── Game Boy Advance/
+    ├── Another Game.srm            (flat)
+    └── mGBA/
+        ├── Game Name.srm
+        ├── Game Name.state
+        └── Game Name.state.png
+```
 
 ### `SYNC_MODE` (required) 
 Two options here:
