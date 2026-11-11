@@ -3,8 +3,11 @@ watchdog>=4.0.1
 python-dotenv>=1.0.0
 loguru>=0.7.0
 pyyaml>=6.0
+fastapi>=0.110.0
+uvicorn>=0.29.0
 
 # testing
+httpx
 flake8
 pytest
 black>=24.0.0

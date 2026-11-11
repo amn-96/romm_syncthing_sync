@@ -4,6 +4,8 @@
 
 A utility for syncing emulator save files across your gaming devices and backing them up to [RomM](https://romm.app/).
 
+[v2 Update](docs/v2_migration.md) 11/11/2026: pulls from RomM and a WebUI for sync management!
+
 # Overview
 
 I've found that RomM is a nice way to have a "source of truth" for my game library but between the many different frontends available on android and the ever-evolving open source toolset, I wanted self-hosted curation of my gaming content that could work across Syncthing, frontends, linux devices, and any PC running RomM for in-browser emulation. 
@@ -13,172 +15,75 @@ If you have multiple handhelds and devices of various form factors whose saves a
 This all started when I set up Syncthing between my devices with Retroarch-based OS's (Android, MuOS, Knulli,...) and Minarch-based OS's (MinUI, NextUI) and none of the folders lined up properly and forced me into making a tedious Syncthing folder setup. Doable yes, but annoying. I had my RomM instance sitting right there and an opportunity to practice my Python for work so now...here we are.
 
 ## What you'll need:
-- A server or NAS of some kind that hosts a central file sync location. I use Syncthing.
-- A self hosted instance of RomM that is accessible by the machine on which this app is deployed.
+- A server or NAS of some kind that hosts a central file sync. I use and recommend Syncthing.
+- A self hosted instance of RomM that is accessible by the machine on which this app is deployed. **RomM 5.x is required** (device sync and `/content` downloads need it).
 - Docker to deploy the app.
 
 ## What this does:
 1. Gaming devices sync save files to a central location via Syncthing.
 2. `romm_sync` detects new/modified saves and states in this "local library"
 3. Matches the contents of your library with the content on your RomM instance.
+4. Pushes new/changed files to RomM and, unless the sync folders are mounted read-only, pulls RomM-side changes (for example web player saves) back into the sync folders. Files changed on both sides are held for you to resolve in the Web UI.
 
-## Some caveats
-
-### Supported Folder Structures
-I wrote this mainly for my uses, so it's probably not taking every possible folder structure into account. It supports two specific flags in Retroarch's `Saving` settings menu.
-
-**"Sort Saves/States by Content Directory"**: Use this when you're not worried about core assignment. This is ok if you are in full control of your Retroarch config. 
-
-If you are sharing with Minarch (MinUI, NextUI) or MuOS (Pickles) or use different cores for a given platform like mGBA and gPSP for Game Boy Advance, you may want to enable **Sort Saves/States by Core**. 
-
-You can mix both, and a single library can have some files flat and some in core folders. Files in a core subfolder within a platform directory ("content directory") are sent to RomM with that core listed as their emulator.
-
-### Possible incompatibilities
-- Core folder names are matched against the cores RomM's in-browser player (EmulatorJS) supports, plus gpSP. A folder that isn't a recognised core (like `User`) is not treated as one.
-- If the same game has a save or state in more than one place (say flat and in a core folder, or under two different cores), only the most recently modified copy is synced to RomM.
-- melonDS (standalone) states (`.ml1`, `.ml2`, ...) are supported alongside RetroArch's `.state` files for sync purposes, but may not work in RomM's browser emulation since that is made for libretro.
-
-The implicit assumption here is that the game files (ROM, with one M) on your device are *already* the same files as the ROM's in your RomM library. Set up your RomM library before trying to run this app. A tip that really helped me is that RomM allows you to map your *local* directory names to *their supported platform names* ("slugs") to make library management easier. [See the docs here.](https://docs.romm.app/latest/Getting-Started/Configuration-File/?h=platform+name#custom-folder-names) 
-
-### This is NOT a RomM Client. 
-
-It's just a one way push to RomM from Syncthing with the expectation that you use a real RomM client to pull from RomM to your handheld. (see Grout, for example). This just makes it easier to have access to RomM's library organization niceties if you have some devices that don't support a RomM client.
-
-# Architecture
+How sync decisions and edge cases are handled: [docs/SYNC_STRATEGY.md](docs/SYNC_STRATEGY.md).
 
 ```
 Gaming Devices (RetroArch, etc.)
          ↓ (Syncthing)
     Central Sync Folder
-         ↓ (romm_sync watches)
+         ↕ (romm_sync watches)
     RomM Database (via API)
     + (Optional and Separate) Backup Location
 ```
 
-# Usage
-I tried to make this as hands-off of a setup as possible. The only files you will need are `docker-compose.yml` and `.env.example`. The included compose file is set up to pull the latest image.
+## Supported Folder Structures
+I wrote this mainly for my uses, so it's probably not taking every possible folder structure into account. It supports two specific flags in Retroarch's `Saving` settings menu.
 
-I didn't account for every possible use case; generally, this will work best if you have saves and states synced and sorted by platform with a single RomM user. The app mounts all your data read-only, so it should be safe to experiment with something like multiple instances if you'd like to sync save data for multiple RomM users at once. 
+**"Sort Saves/States by Content Directory"**: Use this when you're not worried about core assignment. This is ok if you are in full control of your Retroarch config. 
 
-## Get the Files
-Download `docker-compose.yml`, `.env.example`, and `platform_mapping.yaml` (if desired) to the directory of your choice. Typically, you would rename `.env.example` to `.env` and update the corresponding line in `docker-compose.yml` accordingly (`env_file: .env`), but they will work fine together as written. 
+If you are sharing with Minarch (MinUI, NextUI) or MuOS (Pickles) or use different cores for a given platform like mGBA and gPSP for Game Boy Advance, you may want to enable **Sort Saves/States by Core**. Enabling it is recommended in general: it keeps files organized and makes syncing with RomM's web player more seamless.
 
-The included docker compose is just the minimum configuration required for the app to run.
+You can mix both, and a single library can have some files flat and some in core folders. Files in a core subfolder within a platform directory ("content directory") are sent to RomM with that core listed as their emulator.
 
-## Configure
-`docker-compose.yml` is written such that you should not need to edit it at all. Instead, all variables are configured in `.env`. Edit the following variables according to your RoMm and server configuration:
-
-### RomM Configuration
-
-**`ROMM_URL`:** (required)
-Your RomM instance's address. 
-
-**`ROMM_AUTH_TYPE`:** (required)
-Authentication type for RomM. Options are "http" or "api". 
-
-"api" is the default and is recommended so that publically hosted RomM instances can be locked behind OIDC only.
-
-**`ROMM_API_TOKEN`**: (recommended; required for api auth)
-
-Your API token for RomM. This is required when `ROMM_AUTH_TYPE`=api. 
-
-You can get a token by clicking on your profile image in your RomM webUI (top right on the refreshed UI) --> "Client API Tokens" --> Create. Even though `romm_syncthing_sync` doesn't actually have any code that can delete your library, I recommend limiting the permissions just to be safe. These are the permissions I use. They don't allow writing to the actual rom library, collections, or users. 
-
-![Limited API Token Permissions](docs/api_token_permissions.png)   
-
-**`ROMM_USERNAME`**:
-Your username in RomM. Not required if using API auth.
-
-**`ROMM_PASSWORD`**: 
-Your password for RomM. Leave empty if using API auth.
-
-**`ROMM_API_LIMIT`**: (optional)
-Pagination limit for pulling the full list of ROM's down from RomM. Default follows RomM's default (50 items / request). If you have a very large library, you could try increasing this to speed up initial library build, but you may run into API issues. Changing this is generally not needed; most of the library build is spent getting each save and state catalogued.
-
-
-### Sync Configuration
-This app allows you to use one of two different sync modes:
-
-#### Single Sync Folder
-This is similar to Knulli's default. All saves and states are sorted by content directory but placed in the same parent folder, organized like:
+Saves and states can live in one parent folder (`ALL_SYNC_FOLDER`) or in separate parents (`SAVE_SYNC_FOLDER` and `STATE_SYNC_FOLDER`), always sorted by platform folder first, with an optional core folder inside:
 ```
 {SYNC_FOLDER}/
 ├── Nintendo 64/
 │   ├── Game Name.srm
 │   ├── Game Name.state
 │   └── Game Name.state.png
-└── Game Boy Advance/
-    ├── Another Game.srm
-    └── Another Game.state
-```
-For this type of sync, use ONLY:
-
-**ALL_SYNC_FOLDER**: the directory on your machine
-
-#### Separate Save and State Parents
-This is the way I do it because CFW's like MuOS and MinUI/NextUI put their saves and states in completely different places, but still sort by content directory. On Android, you would set your save and state save locations to be different but retain the "Sort by Content Directory" (ONLY!) setting.
-```
-{SAVE_SYNC_FOLDER}/
-├── Nintendo 64/
-│   ├── Game Name.srm
-└── Game Boy Advance/
-    ├── Another Game.srm
-{STATE_SYNC_FOLDER}/
-├── Nintendo 64/
-│   ├── Game Name.state
-│   └── Game Name.state.png
-└── Game Boy Advance/
-    └── Another Game.state
-```
-For this, use:
-
-**SAVE_SYNC_FOLDER**: local directory with save files (.srm)
-
-**STATE_SYNC_FOLDER**: local directory with state files (.state etc.)
-
-Either `ALL_SYNC_FOLDER` or BOTH `SAVE_SYNC_FOLDER` and `STATE_SYNC_FOLDER` are required.
-
-#### Sorting by Core and Content Directory
-If you also sort your saves and/or states by core (**in addition to "by content directory"**), the core folder goes inside the content directory. This is supported in either sync mode and can be mixed with states not organized by core.
-```
-{SYNC_FOLDER}/
 └── Game Boy Advance/
     ├── Another Game.srm            (flat)
-    └── mGBA/
+    └── mGBA/                       (sorted by core)
         ├── Game Name.srm
         ├── Game Name.state
         └── Game Name.state.png
 ```
+See the [Configuration Guide](CONFIGURATION_GUIDE.md#sync-folder-layouts) for the single vs separate parent layouts and [possible incompatibilities](CONFIGURATION_GUIDE.md#possible-incompatibilities).
 
-This was added in `1.6.0` to try and mitigate the quagmire of syncthing folder-fu needed for CFW's that are irritatingly opinionated on how they layout saves and states (*cough* muos pickles *cough*).
+The implicit assumption here is that the game files (ROM, with one M) on your device are *already* the same files as the ROM's in your RomM library. Set up your RomM library before trying to run this app. If your platform folder names differ from RomM's, see [Platform mapping](CONFIGURATION_GUIDE.md#platform-mapping).
 
-### `SYNC_MODE` (required) 
-Two options here:
-- "watch" (default): Runs a full sync when starting the container, then incremental afterward based on changes to files in the sync folders.
-- "periodic": runs the full sync between your local library and RomM library every `SYNC_INTERVAL_SECONDS`. 
-   - Simpler but if you have a large library, syncs may take a while because it queries the RomM API for every single save and state you have.
-   - I have about 40 different games synced with 1 save and a couple states each, running on the same machine as the instance, and a full sync with no changes takes ~20 seconds.
+# Quickstart
+Download `docker-compose.yml`, `.env.example`, and `platform_mapping.yaml` to a directory of your choice. Rename `.env.example` to `.env` and set `env_file: .env` in the compose file (it works as written too). The compose file pulls the latest image and should not need other edits; everything is configured in `.env`.
 
-The default is the incremental sync. I generally recommend using the incremental sync.
+## Default configuration
+By default the app runs in `watch` mode: a full sync at startup, then incremental syncs 60 seconds after file activity stops, plus a check of RomM for changes made on its side every 30 minutes. The Web UI is on port 8080 and the history database lives in `DATA_DIR`.
 
-#### OPTIONALS
-- `WATCHDOG_DELAY_SECONDS` (`watch` mode only)
-    - the amount of time to wait for a period of no file system activity once a change is detected.
-    - DEFAULT: 60s. This means if you save a state at t=0s, syncthing grabs it and puts it on the server at t=5s, and then you save a state again at t=45s (which syncthing again pushes 5s later), the server will not attempt to sync until t=110s.
-- `SYNC_INTERVAL_SECONDS` (`periodic` mode only)
-    - sync interval for the full sync. A full sync can take a while, especially for larger libraries. Default = 1800s (30 minutes).
-- `FULL_INITIAL_SYNC` (both)
-    - Exposed in v1.1.0 and changed to default `True`. This enables a full initial sync to RomM on app startup. Previously, the incremental sync would only push files when it saw changes, which could lead to unexpectedly missing files.
-    - Options: `True`, `False`, `Force`. Force is the same behavior as `FORCE_PUSH_SYNC`, but only does it on app startup.
-- `FORCE_PUSH_SYNC` (both)
-    - Push all changed save files and states to RomM regardless if RomM's state is newer. This is a little dangerous. Defaults to `False`.
+A minimal `.env`:
+```
+ROMM_URL=http://RomM-app:8000
+ROMM_AUTH_TYPE=api
+ROMM_API_TOKEN=your-token
 
-#### Platform Mapping
-A .yaml file is included that you can edit to map your platform directories (i.e snes, nds,...) to the platform "slug" that RomM expects. The app forces a match by game platform, similar to how RomM's uploads work, so this mapping file is required if the platform folder names in your library are different from RomM's. By default, this list attempts to cover for some common systems and alternative slugs used in MinUI/NextUI and Knulli, but it is NOT exhaustive so keep an eye on the logs if you're not seeing some games show up. 
+# Either these two...
+SAVE_SYNC_FOLDER=/path/to/saves
+STATE_SYNC_FOLDER=/path/to/states
+# ...or just ALL_SYNC_FOLDER=/path/to/saves-and-states (not both)
 
-See https://docs.romm.app/latest/Platforms-and-Players/Supported-Platforms/ for RomM's supported platforms.
-
-The mapping is not required, but if it isn't provided, the app can only match *exactly* to RomM's slug.
+PLATFORM_MAP_FILE=./platform_mapping.yaml
+DATA_DIR=./romm_sync_data
+```
+See the [Configuration Guide](CONFIGURATION_GUIDE.md) for [RomM authentication](CONFIGURATION_GUIDE.md#romm-configuration), [sync modes](CONFIGURATION_GUIDE.md#sync-mode), and [all optional variables](CONFIGURATION_GUIDE.md#optional-variables).
 
 ## Spin it up!
 Run the following from a terminal.
@@ -189,6 +94,50 @@ docker compose up -d
 
 That oughta be it...now it should just work™ and you should soon see all your saves and states in RomM!
 
-# Known Issues
-- Right now, Syncthing only PUSHES to RomM. When I have some more free time, I plan to figure out how to implement sync in the other direction. (Author's Note: Haven't had a lot of time for this, but I've been testing locally and going in circles on reliable conflict resolution. I am coming to the conclusion that I should really just vibe code a WebUI with some defaults similar to syncthing's `.stversion` to deal with this. More soon.)
+## Web UI
+Open `http://<host>:8080`. It shows the last sync, files that changed on both sides ("Needs you"), both libraries, and a per-game history.
 
+<table>
+  <tr>
+    <th>Dark</th>
+    <th>Light</th>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/webgui-images/webgui_overview.png" alt="Web UI overview, dark theme" /></td>
+    <td width="50%"><img src="docs/webgui-images/webgui_overview-light.png" alt="Web UI overview, light theme" /></td>
+  </tr>
+</table>
+
+Below "Needs you", the Syncthing and RomM dashboards list the same games from each side, by platform, with the device that last changed each file. Files with an open issue are highlighted.
+
+![Syncthing and RomM dashboards side by side](docs/webgui-images/webgui_bothdashboard-overview.png)
+
+### Conflict Resolution Features
+Files that differ between the two sides, downloads RomM can't deliver, and Syncthing's own `.sync-conflict` copies can all be settled from the same page.
+
+<table>
+  <tr>
+    <th>Differences</th>
+    <th>Held RomM downloads</th>
+    <th>Syncthing conflict copies</th>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/webgui-images/webgui_romm-differences-overview.png" alt="Files that differ from RomM's copy" /></td>
+    <td width="33%"><img src="docs/webgui-images/webgui_heldrommdownload-overview.png" alt="A held RomM download" /></td>
+    <td width="33%"><img src="docs/webgui-images/webgui_syncthingconflict-overview.png" alt="Syncthing conflict copies" /></td>
+  </tr>
+</table>
+
+The full walkthrough, including resolving differences and held downloads, is in [docs/WEBUI.md](docs/WEBUI.md). See [Web UI](CONFIGURATION_GUIDE.md#web-ui) for push-only vs two-way mode, conflict resolution, and the [history database](CONFIGURATION_GUIDE.md#history-database).
+
+### Security Notice
+As of now, the UI has no login. **Please keep it on your LAN only** and *do not expose the port* unless you know what you're doing and have your own proxy/auth setup. 
+
+### Warning
+With a two-way sync, this application now has the potential to *delete your saves*. Backups are always taken, placed in `/data/backup`, and no destructive operations will ever be taken without user intervention, but please do make your own backups and use Syncthing file versioning as cheap insurance. I am not responsible for anything you accidentally delete.
+
+## This is *still* not a full RomM client
+It will pull saves to your syncthing-managed library now but from there it's on you. This application is best for those who already have a working syncthing set up and want to link it with RomM or also use their own clients like Grout and Argosy.
+
+# Known Issues
+See [Known issues](CONFIGURATION_GUIDE.md#known-issues).

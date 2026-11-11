@@ -13,6 +13,7 @@ from .cores import core_of
 
 if TYPE_CHECKING:
     from src.romm_api_func import RommSaves, RommStates
+    from src.two_way_sync import TwoWaySync
 
 
 LocalRemoteMatch = namedtuple('LocalRemoteMatch', ['local', 'romm', 'api_ops'])
@@ -38,6 +39,8 @@ class SaveState:
     in_sync: bool = False  # initialize with False so it has to be checked
     screenshot: Path | None = None  # only populated if the screenshot exists
     id: int | None = None  # will only be populated if the romm save exists
+    size: int | None = None  # RomM copies only
+    content_hash: None = None  # RomM does not hash states; TwoWaySync.romm_hash fills the gap
 
 
 @dataclass(slots=True)
@@ -49,6 +52,24 @@ class SaveFile:
     in_sync: bool = False  # initialize with False so it has to be checked
     id: int | None = None
     emulator: str | None = None  # core folder the file sits in; None if directly in the platform folder
+    content_hash: str | None = None  # RomM copies only (md5). Null for saves RomM could not hash
+    slot: str | None = None  # RomM copies only. Only slotted saves can be paired by /api/sync/negotiate
+    size: int | None = None  # RomM copies only
+
+
+def paired_romm(local: SaveState | SaveFile, romms: list[SaveFile] | list[SaveState]) -> SaveFile | SaveState | None:
+    """RomM keeps one state row per filename but one save row per (filename, emulator).
+
+    A save in a core folder pairs only with the row of that emulator. A flat save (emulator None) pairs by name
+    with a row of any emulator, preferring the row without one."""
+    candidates = [romm for romm in romms if local.path.name == romm.path.name
+                  and (isinstance(local, SaveState) or local.emulator in (None, romm.emulator))]
+    return min(candidates, key=lambda romm: romm.emulator != local.emulator, default=None)
+
+
+def local_for(romm: SaveFile | SaveState, locals_: list[SaveFile] | list[SaveState], romms: list[SaveFile] | list[SaveState]):
+    """The local file that `romm` is paired with, if any."""
+    return next((local for local in locals_ if paired_romm(local, romms) is romm), None)
 
 
 @dataclass
@@ -64,7 +85,7 @@ class Game:
     path: Path  # local filepath
     platform: str  # Platform folder name (always set from parent directory)
     local_save_files: list[SaveFile] = field(default_factory=list)  # objects containing local save file info
-    local_state_files: dict[int, SaveState] = field(default_factory=dict)  # objects containing local state file info, keyed by slot
+    local_state_files: dict[str, SaveState] = field(default_factory=dict)  # objects containing local state file info, keyed by file name
 
     # Romm server-side game data
     romm_save_files: List[SaveFile] = field(default_factory=list)
@@ -79,6 +100,7 @@ class Game:
 
     # Match quality indicators
     is_matched: bool = False  # Whether this game was successfully matched to RomM
+    ambiguous_roms: list = field(default_factory=list)  # RomM rows that all match this name; the game is not synced while set
     match_confidence: float = 1.0  # 0.0-1.0 confidence score for fuzzy matching
 
     # # RomM directory paths (set by determine_romm_dirs)
@@ -116,13 +138,11 @@ class Game:
                 screenshot_path = None
                 screenshot_string = ""
 
-            save_slot = state_slot(state_path.name)
-
-            existing = self.local_state_files.get(save_slot)
+            existing = self.local_state_files.get(state_path.name)
             if existing is not None and existing.modified_at >= state_mtime:
                 continue  # RomM keeps one state per filename, so only the newest copy across core folders is synced
-            self.local_state_files[save_slot] = SaveState(path=state_path, platform_id=self.romm_platform_id, modified_at=state_mtime,
-                                                          slot=save_slot, screenshot=screenshot_path, emulator=core_of(state_path, self.platform))
+            self.local_state_files[state_path.name] = SaveState(path=state_path, platform_id=self.romm_platform_id, modified_at=state_mtime,
+                                                                slot=state_slot(state_path.name), screenshot=screenshot_path, emulator=core_of(state_path, self.platform))
             logger.debug(f"Found state: {state_path.name} for {self.name}{screenshot_string}")
 
     # region RomM Functions
@@ -140,55 +160,78 @@ class Game:
         """Fetches all saves associated with this game from RomM API and populates the Game instance.
         Returns the serialized response for debugging/scripting, but this will be ignored by main()
         """
-        self.romm_save_files.clear()
-        api_ops = get_config().ROMM_CREDENTIALS.saves
-
-        response: list[dict] = api_ops.get(self.romm_id, self.romm_platform_id)
-        # Expects one save (.srm) per RomM user but it will work for multiple. Catalogueing will not be robust though.
-        for s in response:
-            # modification time -- convert to UTC for consistency (RomM API returns in UTC)
-            save_mtime = datetime.fromisoformat(s['updated_at'])
-            self.romm_save_files.append(
-                SaveFile(path=Path(s['file_path']) / s['file_name'],
-                         platform_id=self.romm_platform_id,
-                         modified_at=save_mtime,
-                         id=s['id'],
-                         emulator=s['emulator']))
+        response: list[dict] = get_config().ROMM_CREDENTIALS.saves.get(self.romm_id, self.romm_platform_id)
+        self.set_romm_saves(response)
         logger.debug(f"Fetched {len(self.romm_save_files)} RomM save(s) for {self.name}.")
         return response
+
+    def set_romm_saves(self, rows: list[dict]) -> None:
+        """Populate romm_save_files from API rows. Expects one save (.srm) per RomM user but it will work for multiple."""
+        self.romm_save_files = [SaveFile(path=Path(s['file_path']) / s['file_name'],
+                                         platform_id=self.romm_platform_id,
+                                         modified_at=datetime.fromisoformat(s['updated_at']),  # RomM API returns UTC
+                                         id=s['id'],
+                                         emulator=s['emulator'],
+                                         content_hash=s.get('content_hash'),
+                                         slot=s.get('slot'),
+                                         size=s.get('file_size_bytes')) for s in rows]
 
     def fetch_romm_states(self):
         """Fetches all states associated with this game from RomM API and populates the Game instance.
         Returns the serialized response for debugging/scripting, but this will be ignored by main()
         """
-        self.romm_state_files.clear()
-        api_ops = get_config().ROMM_CREDENTIALS.states
-
-        response: list[dict] = api_ops.get(self.romm_id, self.romm_platform_id)
-
-        # organize API response into namedtuples
-        for s in response:
-            # modification time -- convert to UTC for consistency (RomM API returns in UTC)
-            state_mtime = datetime.fromisoformat(s['updated_at'])
-
-            save_slot = state_slot(s["file_extension"])
-
-            self.romm_state_files.append(SaveState(path=Path(s['file_path']) / s['file_name'],
-                                                   platform_id=self.romm_platform_id,
-                                                   modified_at=state_mtime,
-                                                   id=s['id'],
-                                                   slot=save_slot,
-                                                   emulator=s['emulator']))
+        response: list[dict] = get_config().ROMM_CREDENTIALS.states.get(self.romm_id, self.romm_platform_id)
+        self.set_romm_states(response)
         logger.debug(f"Fetched {len(self.romm_state_files)} RomM state(s) for {self.name}.")
         return response
+
+    def set_romm_states(self, rows: list[dict]) -> None:
+        """Populate romm_state_files from API rows."""
+        self.romm_state_files = [SaveState(path=Path(s['file_path']) / s['file_name'],
+                                           platform_id=self.romm_platform_id,
+                                           modified_at=datetime.fromisoformat(s['updated_at']),
+                                           id=s['id'],
+                                           slot=state_slot(s["file_extension"]),
+                                           emulator=s['emulator'],
+                                           size=s.get('file_size_bytes')) for s in rows]
+
+    def files_by_kind(self) -> list[tuple[str, list[SaveFile] | list[SaveState], list[SaveFile] | list[SaveState]]]:
+        return [("save", self.local_save_files, self.romm_save_files),
+                ("state", list(self.local_state_files.values()), self.romm_state_files)]
     # endregion
+
+    def _push(self, local: SaveState | SaveFile, romm: SaveState | SaveFile | None,
+              api_ops: 'RommSaves | RommStates', kind: str, engine: 'TwoWaySync | None') -> None:
+        def upload() -> dict:
+            if romm is None or (local.emulator and local.emulator != romm.emulator):
+                # PUT can't change the emulator; re-POSTing the same filename repoints the existing row.
+                # A flat local copy has no emulator to repoint to, so it updates the row in place.
+                return api_ops.add(obj=local, rom_id=self.romm_id, emulator=local.emulator)
+            return api_ops.update(obj=local, rom_id=self.romm_id, id=romm.id)
+
+        if engine:
+            engine.push(self.romm_id, kind, local, upload)
+        else:
+            upload()
+
+    def pull_from_romm(self, engine: 'TwoWaySync') -> None:
+        """Bring this game's RomM files into the sync folders (romm_*_files must be populated). Never pushes."""
+        for kind, locals_, romms in self.files_by_kind():
+            for romm in romms:
+                local = local_for(romm, locals_, romms)
+                if local is None:
+                    engine.pull_new(self, kind, romm)
+                elif engine.verdict(self.romm_id, kind, local, romm) == "pull":
+                    engine.pull(self.romm_id, kind, local, romm)
 
     def _romm_sync(self,
                    savedata: SaveState | SaveFile,
                    romm_items: List[SaveFile] | List[SaveState],
                    api_ops: 'RommSaves | RommStates',
-                   force: bool):
-        """Lowest level internal sync function. Syncs a SINGLE file from local to romm"""
+                   force: bool,
+                   engine: 'TwoWaySync | None' = None):
+        """Lowest level internal sync function. Syncs a SINGLE file from local to romm (and, with a writable
+        engine, pulls it when only RomM changed)"""
         if isinstance(savedata, SaveFile):
             sync_type = "save"
         elif isinstance(savedata, SaveState):
@@ -196,16 +239,21 @@ class Game:
         else:
             raise TypeError("Provided save data is not expected type SaveState or SaveFile")
 
-        matched = [LocalRemoteMatch(local=savedata, romm=r, api_ops=api_ops)
-                   for r in romm_items if (savedata.path.name == r.path.name
-                                    and (sync_type == "state" or savedata.emulator == r.emulator))]  # RomM keeps one state row per filename but one save row per (filename, emulator)
+        matched_romm = paired_romm(savedata, romm_items)
 
-        if len(matched):
-            if len(matched) > 1:
-                logger.debug(f"Multiple files on RomM? {matched}")  # there should be exactly one match
-            
-            m = matched[0]
+        if matched_romm:
+            m = LocalRemoteMatch(local=savedata, romm=matched_romm, api_ops=api_ops)
             logger.debug(f"Checking...{savedata.path.name} (local: {m.local.modified_at}, romm: {m.romm.modified_at})")
+
+            if engine and engine.writable and not force:
+                verdict = engine.verdict(self.romm_id, sync_type, m.local, m.romm)
+                if verdict in ("conflict", "differs"):
+                    logger.warning(f"{savedata.path.name} ({verdict}): " + ("changed locally and in RomM" if verdict == "conflict" else "differs from RomM's copy and has no sync history")
+                                   + ". Leaving it for the web UI.")
+                    return
+                if verdict == "pull":
+                    engine.pull(self.romm_id, sync_type, m.local, m.romm)
+                    return
 
             if m.local.modified_at > m.romm.modified_at:
                 sync_this_file = True
@@ -216,32 +264,28 @@ class Game:
             if sync_this_file or force:
                 debug_force_str = "(FORCE)" if force else ""
                 logger.debug(f"Updating {sync_type} in RomM: {m.local.path.name} {debug_force_str}")
-                if savedata.emulator != m.romm.emulator:
-                    # PUT can't change the emulator; re-POSTing the same filename repoints the existing row
-                    api_ops.add(obj=savedata, rom_id=self.romm_id, emulator=savedata.emulator)
-                else:
-                    api_ops.update(obj=savedata, rom_id=self.romm_id, id=m.romm.id)
+                self._push(savedata, m.romm, api_ops, sync_type, engine)
 
         else:  # local present but not in romm --> add
             logger.debug(f"Adding {sync_type} to RomM: {savedata.path.name}")
-            api_ops.add(obj=savedata, rom_id=self.romm_id, emulator=savedata.emulator)
+            self._push(savedata, None, api_ops, sync_type, engine)
 
-    def sync_local_saves_to_remote(self, force: bool = False):
+    def sync_local_saves_to_remote(self, force: bool = False, engine: 'TwoWaySync | None' = None):
         """Updates/Adds local save files for the game to its romm counterpart.
         Expects an EXACT match in .srm name here because it assumes the actual ROM
         is the same ROM as the one in the RomM library"""
         # check if the local save file is already in RomM
         api_ops = get_config().ROMM_CREDENTIALS.saves
         for lsv in self.local_save_files:
-            self._romm_sync(savedata=lsv, romm_items=self.romm_save_files, api_ops=api_ops, force=force)
+            self._romm_sync(savedata=lsv, romm_items=self.romm_save_files, api_ops=api_ops, force=force, engine=engine)
 
-    def sync_local_states_to_remote(self, force: bool = False):
+    def sync_local_states_to_remote(self, force: bool = False, engine: 'TwoWaySync | None' = None):
         """Updates/Adds local state files for the game to its romm counterpart.
         Expects an EXACT match in .state<x> or .state.auto name here because it assumes the actual ROM is the same ROM as the one in the RomM library"""
         # Check if the local state file is already in RomM
         api_ops = get_config().ROMM_CREDENTIALS.states
         for lst in self.local_state_files.values():
-            self._romm_sync(savedata=lst, romm_items=self.romm_state_files, api_ops=api_ops, force=force)
+            self._romm_sync(savedata=lst, romm_items=self.romm_state_files, api_ops=api_ops, force=force, engine=engine)
 
     def summary(self) -> str:
         """Return a human-readable summary of the game's sync status."""

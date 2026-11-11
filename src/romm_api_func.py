@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
-from typing import List, Dict, TYPE_CHECKING
+import math
+from typing import Callable, List, Dict, TYPE_CHECKING
 import requests
 from requests.auth import HTTPBasicAuth
 from loguru import logger
@@ -17,21 +18,11 @@ class RommSaves:
         self.romm_user = romm_user
 
     def get(self,
-            rom_id: int,
-            platform_id: int) -> List[Dict]:
-        """Generic wrapper for ROMM API GET requests.
-        Args:
-            creds: RommUser credentials object
-            endpoint: API endpoint (e.g., "/api/states")
-            params: Optional query parameters
-        Returns:
-            Parsed JSON response as a dictionary
-        """
+            rom_id: int | None = None,
+            platform_id: int | None = None) -> List[Dict]:
+        """GET the user's saves. Without arguments RomM returns all of them in one call."""
         url = f"{self.romm_user.url}/api/saves/"
-        params = {
-            "rom_id": rom_id,
-            "platform_id": platform_id
-        }
+        params = {key: value for key, value in {"rom_id": rom_id, "platform_id": platform_id}.items() if value is not None}
         response = requests.get(url, params=params, **self.romm_user._auth_kwargs())
         logger.debug(f"GET {url} - {response.status_code}")
         return response.json()
@@ -101,21 +92,11 @@ class RommStates:
         self.romm_user = romm_user
 
     def get(self,
-            rom_id: int,
-            platform_id: int) -> List[Dict]:
-        """Generic wrapper for ROMM API GET requests.
-        Args:
-            creds: RommUser credentials object
-            endpoint: API endpoint (e.g., "/api/states")
-            params: Optional query parameters
-        Returns:
-            Parsed JSON response as a dictionary
-        """
+            rom_id: int | None = None,
+            platform_id: int | None = None) -> List[Dict]:
+        """GET the user's states. Without arguments RomM returns all of them in one call."""
         url = f"{self.romm_user.url}/api/states/"
-        params = {
-            "rom_id": rom_id,
-            "platform_id": platform_id
-        }
+        params = {key: value for key, value in {"rom_id": rom_id, "platform_id": platform_id}.items() if value is not None}
         response = requests.get(url, params=params, **self.romm_user._auth_kwargs())
         logger.debug(f"GET {url} - {response.status_code}")
 
@@ -247,6 +228,30 @@ class RommUser:
             self._states = RommStates(self)
         return self._states
 
+    def get_me(self) -> dict:
+        response = requests.get(f"{self.url}/api/users/me", timeout=10, **self._auth_kwargs())
+        response.raise_for_status()
+        return response.json()
+
+    def download_content(self, kind: str, file_id: int) -> bytes:
+        """File bytes of a RomM save or state. kind is "saves" or "states"."""
+        response = requests.get(f"{self.url}/api/{kind}/{file_id}/content", **self._auth_kwargs())
+        response.raise_for_status()
+        return response.content
+
+    def negotiate_saves(self, saves: list[dict]) -> dict:
+        """Register this app as a RomM device (idempotent) and ask RomM how each client save compares to the server's."""
+        device = requests.post(f"{self.url}/api/devices", json={"name": "romm_sync", "client": "romm_sync", "allow_existing": True},
+                               **self._auth_kwargs())
+        device.raise_for_status()
+        response = requests.post(f"{self.url}/api/sync/negotiate", json={"device_id": device.json()["device_id"], "saves": saves},
+                                 **self._auth_kwargs())
+        response.raise_for_status()
+        return response.json()
+
+    def complete_sync_session(self, session_id: int) -> None:
+        requests.post(f"{self.url}/api/sync/sessions/{session_id}/complete", json={}, **self._auth_kwargs()).raise_for_status()
+
     def _validate_library_response(self, response) -> dict:
         """Validate and parse ROMM API library response."""
         try:
@@ -265,8 +270,9 @@ class RommUser:
 
         return data
 
-    def get_full_library(self) -> dict:
-        """Gets the full list of ROM's in the ROMM.app database, with arg support for pagination."""
+    def get_full_library(self, on_page: Callable[[int], None] | None = None) -> dict:
+        """Gets the full list of ROM's in the ROMM.app database, with arg support for pagination.
+        `on_page` is called after each page with the total page count."""
 
         all_items = []
         offset = 0  # start offset at 0.
@@ -304,6 +310,8 @@ class RommUser:
             items_count = len(data["items"])
             all_items.extend(data["items"])
             logger.debug(f"Fetched {items_count} items (total so far: {len(all_items)})")
+            if on_page:
+                on_page(math.ceil(data["total"] / limit))
 
             if items_count < limit:
                 logger.debug("Reached end of records")

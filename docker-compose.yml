@@ -6,10 +6,16 @@ services:
     container_name: romm-sync
     restart: unless-stopped
     env_file: .env.example
+    environment:
+      - DATA_DIR=/data  # the host folder is set with DATA_DIR in .env and mounted below
+    ports:
+      - "${WEBUI_PORT:-8080}:${WEBUI_PORT:-8080}"
     volumes:
     # do NOT change these. Update the variables in .env. 
     # The /syncdata/... bind mounts are hardcoded in the container.
-      # - ${ALL_SYNC_FOLDER}:/syncdata:ro  # Uncomment if saves and states in the same folder.
-      - ${SAVE_SYNC_FOLDER}:/syncdata/saves:ro
-      - ${STATE_SYNC_FOLDER}:/syncdata/states:ro
+      # - ${ALL_SYNC_FOLDER}:/syncdata  # Uncomment if saves and states in the same folder.
+      # Writable, so the app also pulls RomM changes into the sync folders. Add :ro to a mount (or set PUSH_ONLY=true) to only push to RomM.
+      - ${SAVE_SYNC_FOLDER}:/syncdata/saves
+      - ${STATE_SYNC_FOLDER}:/syncdata/states
       - ${PLATFORM_MAP_FILE}:/config/platform_mapping.yaml  # do not change the target bind mount or the filename!!
+      - ${DATA_DIR:-./romm_sync_data}:/data  # history database and backups
