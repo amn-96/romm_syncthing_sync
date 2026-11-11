@@ -1,5 +1,9 @@
 """FastAPI app for the sync dashboard. Reads the DB the sync loop fills; resolve actions share the sync lock."""
+import hashlib
+import json
 import threading
+import time
+from collections import OrderedDict
 from functools import cache
 from pathlib import Path
 from typing import Literal
@@ -7,6 +11,8 @@ from typing import Literal
 import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -19,6 +25,8 @@ from .conflict_resolution import ConflictResolution, LayoutUnavailable
 from .sync_orchestrator import SYNC_LOCK, SYNC_PROGRESS, SyncOrchestrator
 
 STATIC_DIR = Path(__file__).parent / "webui_static"
+FILESYSTEM_TTL_SECONDS = 5
+ASSET_CACHE_SIZE = 256
 
 
 class RevalidatingStaticFiles(StaticFiles):
@@ -61,6 +69,7 @@ class SyncthingKeepCurrentRequest(BaseModel):
 
 def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
     app = FastAPI(title="romm_sync")
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     cfg, store, user = engine.cfg, engine.store, engine.user
 
     orchestrator = SyncOrchestrator(local_library=None, romm_server=None, engine=engine)
@@ -107,16 +116,39 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
                  "original": {"modified_at": iso(original.stat().st_mtime), "size_bytes": original.stat().st_size}}
                 for conflict, original, device in LibraryScanner.find_syncthing_conflicts(cfg.sync_dirs)]
 
+    filesystem_cache: dict = {}
+
+    @app.middleware("http")
+    async def drop_filesystem_cache_after_actions(request: Request, call_next) -> Response:
+        response = await call_next(request)
+        if request.method == "POST":
+            filesystem_cache.clear()
+        return response
+
+    def filesystem_state() -> dict:
+        """Syncthing conflicts, duplicates and backups need directory walks and stats; every POST action clears this."""
+        if not filesystem_cache or time.monotonic() - filesystem_cache["at"] > FILESYSTEM_TTL_SECONDS:
+            backups = conflicts.backups()
+            filesystem_cache.update(at=time.monotonic(), syncthing_conflicts=syncthing_conflicts(),
+                                    duplicates=LibraryScanner.find_flat_core_duplicates(cfg.sync_dirs),
+                                    backups={"count": len(backups), "size_bytes": sum(path.stat().st_size for path in backups),
+                                             "retention_days": cfg.LOG_DB_RETENTION_DAYS})
+        return filesystem_cache
+
     @app.get("/api/state")
-    def state() -> dict:
+    def state(request: Request) -> Response:
         games = games_from_library()
-        return {"push_only": not engine.writable, "sync_mode": cfg.SYNC_MODE, "romm_url": cfg.ROMM_PUBLIC_URL, "user": romm_user(),
-                "last_sync": last_sync(games), "games": games, "syncthing_conflicts": syncthing_conflicts(),
+        filesystem = filesystem_state()
+        body = json.dumps(jsonable_encoder({"push_only": not engine.writable, "sync_mode": cfg.SYNC_MODE, "romm_url": cfg.ROMM_PUBLIC_URL, "user": romm_user(),
+                "last_sync": last_sync(games), "games": games, "syncthing_conflicts": filesystem["syncthing_conflicts"],
                 "orphans": store.kv_get("orphans") or [], "ambiguous": store.kv_get("ambiguous") or [], "unmatched": store.kv_get("unmatched") or [],
-                "duplicates": LibraryScanner.find_flat_core_duplicates(cfg.sync_dirs),
-                "romm_library": store.kv_get("romm_library") or {"roms": 0, "size_bytes": 0},
-                "backups": {"count": len(backups := conflicts.backups()), "size_bytes": sum(path.stat().st_size for path in backups),
-                            "retention_days": cfg.LOG_DB_RETENTION_DAYS}}
+                "duplicates": filesystem["duplicates"], "backups": filesystem["backups"],
+                "romm_library": store.kv_get("romm_library") or {"roms": 0, "size_bytes": 0}}), separators=(",", ":")).encode()
+        etag = f'"{hashlib.sha1(body).hexdigest()}"'
+        headers = {"ETag": etag, "Cache-Control": "no-cache"}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
 
     @app.post("/api/actions/prune-backups")
     def prune_backups() -> dict:
@@ -215,14 +247,29 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
                     raise HTTPException(500, f"Could not resolve {Path(path).name}: {error}")
         return {"message": f"Backed up and removed {plural(len(body.paths), 'sync-conflict file')}"}
 
+    asset_cache: OrderedDict[str, tuple[bytes, str, dict[str, str]]] = OrderedDict()
+
     @app.get("/romm/{asset_path:path}")
     def romm_asset(asset_path: str, request: Request) -> Response:
         """Platform icons and covers, so the browser never needs to reach an internal ROMM_URL."""
         if not asset_path.startswith("assets/") or ".." in asset_path:
             raise HTTPException(404)
-        response = requests.get(f"{user.url}/{asset_path}", params=dict(request.query_params), timeout=15, **user._auth_kwargs())
-        return Response(response.content, status_code=response.status_code, media_type=response.headers.get("content-type"),
-                        headers={"Cache-Control": "max-age=3600"})
+        key = f"{asset_path}?{request.url.query}"
+        if key not in asset_cache:
+            upstream = requests.get(f"{user.url}/{asset_path}", params=dict(request.query_params), timeout=15, **user._auth_kwargs())
+            if upstream.status_code != 200:
+                return Response(upstream.content, status_code=upstream.status_code, media_type=upstream.headers.get("content-type"))
+            # Only assets/romm/ (covers) can change; platform icons and logos are fixed.
+            headers = {"Cache-Control": "max-age=3600" if asset_path.startswith("assets/romm/") else "max-age=604800, immutable",
+                       **{name: upstream.headers[name] for name in ("ETag", "Last-Modified") if name in upstream.headers}}
+            asset_cache[key] = (upstream.content, upstream.headers.get("content-type"), headers)
+            if len(asset_cache) > ASSET_CACHE_SIZE:
+                asset_cache.popitem(last=False)
+        asset_cache.move_to_end(key)
+        body, content_type, headers = asset_cache[key]
+        if request.headers.get("if-none-match", "") == headers.get("ETag") or request.headers.get("if-modified-since", "") == headers.get("Last-Modified"):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type=content_type, headers=headers)
 
     app.mount("/", RevalidatingStaticFiles(directory=STATIC_DIR, html=True))
     return app
