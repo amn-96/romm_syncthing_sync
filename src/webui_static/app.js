@@ -5,6 +5,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const asset = (path) => `/romm/${path.replace(/^\//, "")}`;
 const icon = (slug) => asset(`assets/platforms/${slug}.svg`);
 const cover = (path) => (path ? asset(path) : "");
+const img = (cls, src, lazy = false) => `<img class="${cls}" src="${src}" alt="" decoding="async" ${lazy ? 'loading="lazy"' : ""} />`;
 const PUSH_ONLY_REASON = "Push-only: the sync folders are read-only (or PUSH_ONLY is set), so RomM copies are never written to disk.";
 
 function ago(iso) {
@@ -93,9 +94,9 @@ function groupCard(g) {
   const chips = (g.ambiguous ? `<span class="why">Not synced: ${g.ambiguous.roms.length} RomM matches</span>` : "") +
     [[g.conflicts.length, "conflict"], [g.differs.length, "difference"], [g.blocked.length, "held download"], [g.syncthing.length, "Syncthing copy"]]
     .filter(([n]) => n).map(([n, w], i) => `<span class="why ${i || !g.conflicts.length ? "soft" : ""}">${plural(n, w)}</span>`).join("");
-  const sub = g.game ? `<img class="plat-icon" src="${icon(g.game.platform_slug)}" alt="" />${esc(g.game.platform_name)}` : `Folder /${esc(g.folder)}`;
+  const sub = g.game ? `${img("plat-icon", icon(g.game.platform_slug))}${esc(g.game.platform_name)}` : `Folder /${esc(g.folder)}`;
   return `<button class="conflict-card ${g.game ? "" : "plain"}" data-group="${esc(g.key)}">
-      ${g.game ? `<img class="cover" src="${cover(g.game.cover)}" alt="" loading="lazy" />` : ""}
+      ${g.game ? img("cover", cover(g.game.cover), true) : ""}
       <div>
         <div class="title">${esc(groupName(g))}</div>
         <div class="meta">${sub}</div>
@@ -128,11 +129,25 @@ function fileRow(game, file, side) {
 }
 
 const treeOpen = new Map();  // data-tree key -> open, so the periodic re-render keeps what the user opened or closed
-const tree = (cls, key, hit, inner) => `<details class="tree ${cls} ${hit ? "has-conflict" : ""}" data-tree="${esc(key)}" ${treeOpen.get(key) ?? hit ? "open" : ""}>${inner}</details>`;
+const lazyBodies = new Map();  // data-tree key -> builder of the body of a tree that was rendered closed and not opened yet
+
+// Closed trees get an empty body that fillTree() builds on first open; open ones (by user choice or an open issue) are built now.
+function tree(cls, key, hit, summary, body) {
+  const open = treeOpen.get(key) ?? hit;
+  if (!open) lazyBodies.set(key, body);
+  return `<details class="tree ${cls} ${hit ? "has-conflict" : ""}" data-tree="${esc(key)}" ${open ? "open" : ""}>${summary}<div class="tree-body">${open ? body() : ""}</div></details>`;
+}
+
+function fillTree(details) {
+  const body = lazyBodies.get(details.dataset.tree);
+  if (!body) return;
+  lazyBodies.delete(details.dataset.tree);
+  details.querySelector(":scope > .tree-body").innerHTML = body();
+}
 
 function platformSummary(p, count) {
   const hit = p.games.some((g) => g.files.some(isOpen));
-  return [hit, `<summary><img class="plat-icon" src="${icon(p.slug)}" alt="" />${esc(p.name)}<span class="n">${count}</span><span class="chev">▶</span></summary>`];
+  return [hit, `<summary>${img("plat-icon", icon(p.slug), true)}${esc(p.name)}<span class="n">${count}</span><span class="chev">▶</span></summary>`];
 }
 
 const foldPill = (side) => `<button class="pill fold" data-fold="${side}"><span class="chev">▶</span></button>`;
@@ -151,20 +166,20 @@ function renderLocal() {
   const body = byPlatform().map((p) => {
     const files = p.games.flatMap((g) => g.files.filter((f) => f.local && f.status !== "blocked").map((f) => ({ g, f })));
     const [hit, summary] = platformSummary(p, `${files.length} files`);
-    const cores = new Map();
-    for (const x of files) {
-      const key = x.f.core || "";
-      if (!cores.has(key)) cores.set(key, []);
-      cores.get(key).push(x);
-    }
-    const flat = (cores.get("") || []).map(({ g, f }) => fileRow(g, f, "local")).join("");
-    const nested = [...cores.entries()].filter(([k]) => k).map(([core, xs]) => {
-      const coreHit = xs.some(({ f }) => isOpen(f));
-      return tree("sub", `local:${p.slug}/${core}`, coreHit, `<summary><span class="folder-glyph">▤</span>${esc(core)}<span class="n">${xs.length}</span><span class="chev">▶</span></summary>
-        <div class="tree-body">${xs.map(({ g, f }) => fileRow(g, f, "local")).join("")}</div>`);
-    }).join("");
-    return tree("", `local:${p.slug}`, hit, `${summary}
-      <div class="tree-body"><div class="folder-glyph" style="padding:4px 10px">/${esc(p.games[0].fs_folder)}</div>${nested}${flat}</div>`);
+    return tree("", `local:${p.slug}`, hit, summary, () => {
+      const cores = new Map();
+      for (const x of files) {
+        const key = x.f.core || "";
+        if (!cores.has(key)) cores.set(key, []);
+        cores.get(key).push(x);
+      }
+      const flat = (cores.get("") || []).map(({ g, f }) => fileRow(g, f, "local")).join("");
+      const nested = [...cores.entries()].filter(([k]) => k).map(([core, xs]) =>
+        tree("sub", `local:${p.slug}/${core}`, xs.some(({ f }) => isOpen(f)),
+          `<summary><span class="folder-glyph">▤</span>${esc(core)}<span class="n">${xs.length}</span><span class="chev">▶</span></summary>`,
+          () => xs.map(({ g, f }) => fileRow(g, f, "local")).join(""))).join("");
+      return `<div class="folder-glyph" style="padding:4px 10px">/${esc(p.games[0].fs_folder)}</div>${nested}${flat}`;
+    });
   }).join("");
   $("#panel-local").innerHTML = `
     <div class="panel-head"><span class="side-badge"></span><h2>Syncthing</h2>${foldPill("local")}<span class="sub">${state.push_only ? "read-only" : "read/write"}</span></div>${body}`;
@@ -175,14 +190,13 @@ function renderRomm() {
   const u = state.user;
   const body = byPlatform().map((p) => {
     const [hit, summary] = platformSummary(p, `${p.games.length} games`);
-    const games = p.games.map((g) => {
-      const gHit = g.files.some(isOpen);
+    const games = () => p.games.map((g) => {
       const romm = g.files.filter((f) => f.romm);
-      return tree("sub", `romm:${p.slug}/${g.rom_id}`, gHit, `<summary><span class="game-line game-link" data-hist="${g.rom_id}"><img class="mini-cover" src="${cover(g.cover)}" alt="" loading="lazy" /><span class="gname">${esc(g.name)}</span></span>
-        <span class="n">${romm.length}</span><span class="chev">▶</span></summary>
-        <div class="tree-body">${romm.map((f) => fileRow(g, f, "romm")).join("")}</div>`);
+      return tree("sub", `romm:${p.slug}/${g.rom_id}`, g.files.some(isOpen), `<summary><span class="game-line game-link" data-hist="${g.rom_id}">${img("mini-cover", cover(g.cover), true)}<span class="gname">${esc(g.name)}</span></span>
+        <span class="n">${romm.length}</span><span class="chev">▶</span></summary>`,
+        () => romm.map((f) => fileRow(g, f, "romm")).join(""));
     }).join("");
-    return tree("", `romm:${p.slug}`, hit, `${summary}<div class="tree-body">${games}</div>`);
+    return tree("", `romm:${p.slug}`, hit, summary, games);
   }).join("");
   $("#panel-romm").innerHTML = `
     <div class="panel-head"><span class="side-badge"></span><h2>RomM</h2>${foldPill("romm")}
@@ -200,14 +214,31 @@ function renderUnmatched() {
 
 function renderBottom() {
   const files = state.games.flatMap((g) => g.files);
-  $("#bottombar").innerHTML = `
+  const count = needCount();
+  const ls = state.last_sync;
+  const issues = $("#bar-issues");
+  issues.textContent = count ? plural(count, "issue") : "In sync";
+  issues.classList.toggle("critical", count > 0);
+  $("#bar-last").textContent = ls ? `Last: ${ago(ls.finished_at)}` : "No sync yet";
+  $("#bar-stats").innerHTML = `
     <span><strong>${state.games.length}</strong> games tracked</span>
     <span><strong>${files.filter((f) => f.kind === "save").length}</strong> saves</span>
     <span><strong>${files.filter((f) => f.kind === "state").length}</strong> states</span>
-    <span><strong>${byPlatform().length}</strong> platforms</span>
-    <a class="romm-link" href="${esc(state.romm_url)}" target="_blank" rel="noopener" title="Open RomM">
-      <img src="${asset("assets/isotipo.svg")}" alt="RomM" />Open RomM</a>`;
+    <span><strong>${byPlatform().length}</strong> platforms</span>`;
+  $("#bar-romm").href = state.romm_url;
+  $("#bar-romm img").src = asset("assets/isotipo.svg");
 }
+
+// Once the hero card has scrolled away (desktop: the sticky bar reaches the top) the bar becomes the action bar and takes over the maintenance button.
+function setActionBar(action) {
+  const bar = $("#bottombar");
+  if (bar.classList.contains("action") === action) return;
+  bar.classList.toggle("action", action);
+  (action ? $("#bar-menu") : $(".topbar-right")).append($(".menu"));
+}
+const STICKY_TOP_PX = 12;  // keep in sync with .bottombar { top } in styles.css
+new IntersectionObserver(([sentinel]) => setActionBar(!sentinel.isIntersecting && sentinel.boundingClientRect.top < STICKY_TOP_PX * 2),
+  { rootMargin: `-${STICKY_TOP_PX}px 0px 0px 0px` }).observe($("#bar-sentinel"));
 
 function modal(inner, cls = "") {
   $("#modal-root").innerHTML = `<div class="scrim"><div class="modal ${cls}" role="dialog" aria-modal="true">${inner}</div></div>`;
@@ -215,9 +246,9 @@ function modal(inner, cls = "") {
 
 function gameHead(game, subtitle) {
   return `<div class="modal-head">
-    <img class="cover" src="${cover(game.cover)}" alt="" />
+    ${img("cover", cover(game.cover))}
     <div><h3>${esc(game.name)}</h3>
-      <div class="meta"><img class="plat-icon" src="${icon(game.platform_slug)}" alt="" />${esc(game.platform_name)}${subtitle}</div></div>
+      <div class="meta">${img("plat-icon", icon(game.platform_slug))}${esc(game.platform_name)}${subtitle}</div></div>
     <button class="pill close">Close</button></div>`;
 }
 
@@ -448,6 +479,7 @@ async function runAction(button, action) {
   clearInterval(poll);
   const body = await response.json();
   await load();
+  renderMenu();  // an unchanged state skips render(), which would otherwise re-enable the buttons
   toast(response.ok ? body.message : body.detail);
 }
 
@@ -474,6 +506,7 @@ document.addEventListener("click", (e) => {
 });
 
 function render() {
+  lazyBodies.clear();
   const chip = $("#push-only-chip");
   chip.hidden = !state.push_only;
   chip.textContent = "Push-only";
@@ -487,17 +520,26 @@ function render() {
   renderMenu();
 }
 
+let foldSync;
 document.addEventListener("toggle", (e) => {
   if (!e.target.dataset.tree) return;
   treeOpen.set(e.target.dataset.tree, e.target.open);
-  syncFolds();
+  if (e.target.open) fillTree(e.target);
+  // toggle events arrive one task per <details>, so a fold-all would otherwise run syncFolds once per tree
+  foldSync ??= requestAnimationFrame(() => { foldSync = null; syncFolds(); });
 }, true);
 
 document.addEventListener("click", (e) => {
   if (e.target.closest(".modal")) return;
   const fold = e.target.closest("[data-fold]");
   if (fold) {
-    treesOf(fold.dataset.fold).forEach((d) => (d.open = !fold.classList.contains("open")));
+    const open = !fold.classList.contains("open");
+    // building a body adds the nested trees, so expanding repeats until none are left closed
+    let trees;
+    do {
+      trees = treesOf(fold.dataset.fold);
+      trees.forEach((d) => { if (open) fillTree(d); d.open = open; });
+    } while (open && trees.length < treesOf(fold.dataset.fold).length);
     return;
   }
   const hist = e.target.closest("[data-hist]");
@@ -521,19 +563,30 @@ themeBtn.addEventListener("click", () => {
   themeBtn.textContent = dark ? "Light" : "Dark";
 });
 
+const LOG_LINES = 500;
 async function loadLogs() {
   const pre = $("#applog-body");
   const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
-  pre.textContent = (await (await fetch("/api/logs")).json()).join("");
+  pre.textContent = (await (await fetch("/api/logs")).json()).slice(-LOG_LINES).join("");
   if (atBottom) pre.scrollTop = pre.scrollHeight;
 }
 $("#applog").addEventListener("toggle", (e) => e.target.open && loadLogs());
 
+let lastStateText;  // the periodic reload skips render() when the server state did not change
 async function load() {
-  state = await (await fetch("/api/state")).json();
+  const stateText = await (await fetch("/api/state")).text();
+  if (stateText === lastStateText) {
+    renderHero();  // only these two show relative times
+    renderBottom();
+    return;
+  }
+  lastStateText = stateText;
+  state = JSON.parse(stateText);
   render();
   if ($("#applog").open) loadLogs();
 }
 
 load();
-setInterval(() => !$("#modal-root").innerHTML && $("#menu-panel").hidden && load(), 30000);
+const refresh = () => !document.hidden && !$("#modal-root").innerHTML && $("#menu-panel").hidden && load();
+setInterval(refresh, 30000);
+document.addEventListener("visibilitychange", refresh);

@@ -103,7 +103,7 @@ Open `http://<host>:8080`. It shows the last sync, files that changed on both si
     <th>Light</th>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/webgui-images/webgui_overview.png" alt="Web UI overview, dark theme" /></td>
+    <td width="50%"><img src="docs/webgui-images/webgui_overview-dark.png" alt="Web UI overview, dark theme" /></td>
     <td width="50%"><img src="docs/webgui-images/webgui_overview-light.png" alt="Web UI overview, light theme" /></td>
   </tr>
 </table>

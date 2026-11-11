@@ -12,7 +12,7 @@ There is no login. Keep the port on your LAN or behind a reverse proxy with auth
     <th>Light</th>
   </tr>
   <tr>
-    <td width="50%"><img src="webgui-images/webgui_overview.png" alt="Overview, dark theme" /></td>
+    <td width="50%"><img src="webgui-images/webgui_overview-dark.png" alt="Overview, dark theme" /></td>
     <td width="50%"><img src="webgui-images/webgui_overview-light.png" alt="Overview, light theme" /></td>
   </tr>
 </table>
