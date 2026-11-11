@@ -93,9 +93,9 @@ class RetroGameServer:
     
     @classmethod
     def build_romm_library(cls,
-                           romm_user: RommUser):
+                           romm_user: RommUser, on_page=None):
         """Factory method to instantiate a RetroGameServerClass with romm library info."""
-        data = romm_user.get_full_library()
+        data = romm_user.get_full_library(on_page)
 
         # define the keys of the json response we want early
         library_columns = {
@@ -105,7 +105,8 @@ class RetroGameServer:
             'platform_id': int,
             'fs_name': str,
             'fs_size_bytes': int,
-            'platform_display_name': str
+            'platform_display_name': str,
+            'path_cover_small': str
         }
 
         # Strip all fields except essential ones
@@ -352,6 +353,19 @@ class LibraryScanner:
 
         return files
 
+    # ROM extensions some cores keep in save names ("Game.gba.sav", "Game.z64.eep"); "Game.gba" must group with "Game.srm"
+    ROM_EXTENSIONS = {"gba", "gb", "gbc", "nes", "fds", "sfc", "smc", "n64", "z64", "v64", "nds", "md", "gen", "smd", "sms", "gg",
+                      "32x", "pce", "a26", "a78", "lnx", "ngp", "ngc", "ws", "wsc", "vb", "bin", "iso", "cue", "chd", "pbp", "zip", "7z"}
+    # EmulatorJS (RomM web player) names saves "Game [2025-08-08 00-06-19-138].srm"
+    WEBPLAYER_STAMP = re.compile(r" \[\d{4}-\d{2}-\d{2}[ _]\d{2}-\d{2}-\d{2}(?:-\d{3})?\]$")
+
+    @staticmethod
+    def _game_key(stem: str) -> str:
+        """Game name for grouping and RomM matching: no web-player timestamp, no ROM extension."""
+        stem = LibraryScanner.WEBPLAYER_STAMP.sub("", stem)
+        rom_name, dot, extension = stem.rpartition(".")
+        return rom_name if dot and rom_name and extension.lower() in LibraryScanner.ROM_EXTENSIONS else stem
+
     @staticmethod
     def _parse_game_file(file_path: Path) -> tuple[str, str]:
         """Game name and file type ('save', 'state' or 'state_screen') of a save/state file.
@@ -361,10 +375,10 @@ class LibraryScanner:
         """
         filename = file_path.name
         if state_screen_match := re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename):
-            return state_screen_match.group(1), 'state_screen'
+            return LibraryScanner._game_key(state_screen_match.group(1)), 'state_screen'
         if state_match := re.match(r'^(.+?)\.(?:state(?:\d+|\.auto)?|ml\d+)$', filename):
-            return state_match.group(1), 'state'
-        return file_path.stem, 'save'
+            return LibraryScanner._game_key(state_match.group(1)), 'state'
+        return LibraryScanner._game_key(file_path.stem), 'save'
 
     @staticmethod
     def _add_game_dict_entry(file_path: Path, platform_name: str, games_dict: dict) -> dict:
@@ -438,6 +452,35 @@ class LibraryScanner:
         return games_dict
     # endregion
 
+    SYNC_CONFLICT_PATTERN = re.compile(r"^(?P<base>.+)\.sync-conflict-\d{8}-\d{6}(?:-(?P<device>[A-Z0-9]{7}))?(?P<ext>\..*)?$")
+
+    @staticmethod
+    def find_syncthing_conflicts(sync_dirs: List[Path]) -> List[tuple[Path, Path, str | None]]:
+        """(conflict copy, original path, short ID of the device that made the copy) for every Syncthing conflict file."""
+        conflicts = []
+        for sync_dir in sync_dirs:
+            for conflict_path in sync_dir.rglob("*.sync-conflict-*"):
+                match = LibraryScanner.SYNC_CONFLICT_PATTERN.match(conflict_path.name)
+                if not (conflict_path.is_file() and match):
+                    continue
+                original_path = conflict_path.with_name(match["base"] + (match["ext"] or ""))
+                if original_path.is_file():
+                    conflicts.append((conflict_path, original_path, match["device"]))
+        return conflicts
+
+    @staticmethod
+    def find_flat_core_duplicates(sync_dirs: List[Path]) -> List[dict]:
+        """Files that exist both directly in a platform folder and in a core folder of it."""
+        duplicates = []
+        for sync_dir in sync_dirs:
+            for platform_dir in sorted(d for d in sync_dir.iterdir() if d.is_dir()):
+                folders_by_name = defaultdict(set)
+                for file_path in LibraryScanner._collect_games(platform_dir):
+                    folders_by_name[file_path.name].add(file_path.parent.name)
+                duplicates += [{"platform": platform_dir.name, "file_name": name, "folders": sorted(folders)}
+                               for name, folders in sorted(folders_by_name.items()) if platform_dir.name in folders and len(folders) > 1]
+        return duplicates
+
     # RomM - LocalLibrary interface
     @staticmethod
     def match_to_romm(games: List[Game],
@@ -467,7 +510,14 @@ class LibraryScanner:
                 #   I went with this way because it'd be reliable and broad enough, but there are other objects I could use.
                 matching_game_entry = [g for g in platform_games if game.name in (g['fs_name'], Path(g['fs_name']).stem)]  # fs_name lacks an extension for multi-file games
 
-                if len(matching_game_entry) > 0:
+                game.ambiguous_roms = []
+                if len(matching_game_entry) > 1:
+                    # e.g. "Foo.zip" and "Foo.nes": picking either one could pair the local files with the other ROM's saves on a later run
+                    logger.warning(f"Not syncing {game.name} ({game.platform}): it matches {len(matching_game_entry)} RomM games "
+                                   f"({', '.join(g['fs_name'] for g in matching_game_entry)}). Remove the duplicate in RomM.")
+                    game.ambiguous_roms = matching_game_entry
+                    game.is_matched = False
+                elif matching_game_entry:
                     game.set_romm_data(matching_game_entry[0])
                 else:
                     # Game not found in ROMM library

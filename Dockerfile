@@ -14,6 +14,8 @@ COPY romm_sync.py ./
 # Create data directories
 RUN mkdir -p /data/sync /data/cache /data/backup
 
+EXPOSE 8080
+
 # Health check
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "from pathlib import Path; exit(0 if Path('/data/sync').exists() else 1)"

@@ -2,6 +2,7 @@
 import os
 import sys
 import logging
+from collections import deque
 from pathlib import Path
 from typing import Optional
 from loguru import logger
@@ -41,10 +42,18 @@ class Config:
                  full_initial_sync: str = os.getenv("FULL_INITIAL_SYNC", "true").lower(),
                  force_push_sync: bool = os.getenv("FORCE_PUSH_SYNC", "false").lower() == "true",
                  sync_interval_seconds: int = int(os.getenv("SYNC_INTERVAL_SECONDS", "1800")),
+                 pull_interval_seconds: int = int(os.getenv("PULL_INTERVAL_SECONDS", "1800")),
+                 log_db_retention_days: int = int(os.getenv("LOG_DB_RETENTION_DAYS", "90")),
                  platform_map: Path | None = Path("/config/platform_mapping.yaml") if os.getenv("PLATFORM_MAP_FILE") else None,
                  log_level: str = os.getenv("LOG_LEVEL", "INFO"),
                  dry_run: bool = os.getenv("DRY_RUN", "false").lower() == "true",
-                 enable_metrics: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true"):
+                 enable_metrics: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true",
+                 push_only: bool = os.getenv("PUSH_ONLY", "false").lower() == "true",
+                 data_dir: Path = Path(os.getenv("DATA_DIR", "/data")),
+                 webui_port: int = int(os.getenv("WEBUI_PORT", "8080")),
+                 romm_public_url: str = os.getenv("ROMM_PUBLIC_URL") or os.getenv("ROMM_URL", ""),
+                 syncthing_url: str = os.getenv("SYNCTHING_URL", ""),
+                 syncthing_api_key: str = os.getenv("SYNCTHING_API_KEY", "")):
         """Initialize config from environment variables."""
 
         # ROMM API Configuration
@@ -59,7 +68,17 @@ class Config:
         self.FORCE_PUSH_SYNC: bool = force_push_sync  # for normal sync functionality
         self.SYNC_INTERVAL_SECONDS: int = sync_interval_seconds
         self.WATCHDOG_DELAY_SECONDS: int = watchdog_delay_seconds
+        self.PULL_INTERVAL_SECONDS: int = pull_interval_seconds  # (watch mode) how often RomM is checked for changes
+        self.LOG_DB_RETENTION_DAYS: int = log_db_retention_days
         self.PLATFORM_MAP_PATH: Path | None = platform_map
+        self.PUSH_ONLY: bool = push_only  # also forced on by validate() when a sync folder is read-only
+
+        # Web UI, local database and Syncthing
+        self.DATA_DIR: Path = data_dir
+        self.WEBUI_PORT: int = webui_port
+        self.ROMM_PUBLIC_URL: str = romm_public_url.rstrip("/")
+        self.SYNCTHING_URL: str = syncthing_url.rstrip("/")
+        self.SYNCTHING_API_KEY: str = syncthing_api_key
 
         # Logging Configuration
         self.LOG_LEVEL: str = log_level
@@ -97,6 +116,14 @@ class Config:
         
         return dir_errors
 
+    @property
+    def sync_dirs(self) -> list[Path]:
+        return [d for d in (self.SAVE_SYNC_DIR, self.STATE_SYNC_DIR, self.ALL_SYNC_DIR) if d]
+
+    def sync_dir_for(self, kind: str) -> Path:
+        """Root sync directory that holds `kind` files ("save" or "state"). Files live in <root>/<platform>/."""
+        return self.ALL_SYNC_DIR or (self.SAVE_SYNC_DIR if kind == "save" else self.STATE_SYNC_DIR)
+
     def validate(self):
         """Validate required configuration values.
 
@@ -115,6 +142,14 @@ class Config:
             errors.append("ROMM_PASSWORD is required for http auth!")
 
         errors += self._validate_input_directories()
+
+        if self.LOG_DB_RETENTION_DAYS <= 0:
+            errors.append(f"LOG_DB_RETENTION_DAYS must be a positive number of days, got {self.LOG_DB_RETENTION_DAYS}.")
+
+        read_only_dirs = [d for d in self.sync_dirs if d.exists() and not os.access(d, os.W_OK)]
+        if read_only_dirs:
+            logger.warning(f"Sync folder(s) not writable: {', '.join(map(str, read_only_dirs))}. Running push-only.")
+            self.PUSH_ONLY = True
 
         # Validate platform mapping file (optional - will fallback to exact matching)
         if (self.PLATFORM_MAP_PATH is not None) and (not self.PLATFORM_MAP_PATH.exists()):
@@ -148,6 +183,7 @@ class LoggingConfig:
     """Centralized logging configuration using loguru."""
 
     _initialized = False
+    LOG_BUFFER: deque[str] = deque(maxlen=2000)
 
     @classmethod
     def _get_filter_func(cls, log_level: str):
@@ -260,6 +296,12 @@ class LoggingConfig:
             level=log_level if log_level != "TRACE" else 5,
             filter=cls._get_filter_func(log_level),
             colorize=True
+        )
+        logger.add(
+            cls.LOG_BUFFER.append,
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+            level=log_level if log_level != "TRACE" else 5,
+            filter=cls._get_filter_func(log_level),
         )
 
         # Intercept stdlib logging (for watchdog, requests, urllib3)
