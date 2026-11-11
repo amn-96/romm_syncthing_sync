@@ -26,8 +26,25 @@ The toggle in the top right switches between the two themes.
   - *held download*: a file that only exists in RomM and cannot be placed locally.
   - *Syncthing copy*: a `.sync-conflict` copy left by Syncthing.
   - *Not synced: N RomM matches*: the local game name matches several RomM games.
-- **Footer.** Library totals (games tracked, saves, states, platforms) and a link that opens RomM.
+- **Stats bar.** Library totals (games tracked, saves, states, platforms) and an icon that opens RomM. It sticks to the top of the window when you scroll past it and becomes the action bar (see below).
 - **Top right.** The theme toggle and the actions menu: prune backups, rebuild the library (a full sync), and pull changes from RomM. In push-only mode the menu notes that nothing is written to the sync folders and the actions that write are disabled.
+
+### The action bar
+
+Scroll past the hero and the stats bar turns into an action bar that stays with you: the issue count, the time of the last sync, the library stats, the link to RomM and the actions menu. You no longer have to scroll back up to reach the menu.
+
+On a phone the bar sits at the bottom of the screen, within thumb reach. It drops the library stats, and the actions menu opens as a bottom sheet.
+
+<table>
+  <tr>
+    <th>Top of the page</th>
+    <th>Scrolled: the action bar</th>
+  </tr>
+  <tr>
+    <td width="50%"><img src="webgui-images/webgui_mobile-hero.png" alt="Mobile, top of the page with the stats bar" /></td>
+    <td width="50%"><img src="webgui-images/webgui_mobile-actionbar.png" alt="Mobile, action bar at the bottom of the screen" /></td>
+  </tr>
+</table>
 
 Click a card to open that game's issues. Click a file in the dashboards below to see its history.
 
