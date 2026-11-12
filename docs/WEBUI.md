@@ -124,12 +124,12 @@ In a modal, **Keep RomM copy** is greyed out because it would overwrite the sync
 
 ![Actions menu in push-only mode](webgui-images/webgui_pushonly-menu.png)
 
-The actions menu (top right) shows the server totals and the maintenance actions. In push-only mode "Pull changes from RomM" is disabled and a note explains why. Unlike two-way mode, push-only still decides what to upload by modified time, so see [Sync strategy](SYNC_STRATEGY.md#push-only) before relying on it.
+The actions menu (top right) starts with a read-only **Server info** block (this app's version, the RomM version (checked every 30 minutes and each time the menu opens; a red ⚠ on the menu button means RomM did not answer) and a collapsible **Sync Configuration** list of the settings that shape the sync), then the server totals and the maintenance actions. In push-only mode "Pull changes from RomM" is disabled and a note explains why. Unlike two-way mode, push-only still decides what to upload by modified time, so see [Sync strategy](SYNC_STRATEGY.md#push-only) before relying on it.
 
 ## 5. Also on the page
 
 - **Unmatched games.** Below the dashboards and above the application log, a collapsed list of local games that match no RomM game, with a hint to check the platform mapping and the ROM's file name. It is informational: nothing is held or changed.
-- **Application log.** The most recent log lines, collapsed by default.
+- **Application log.** The most recent log lines, collapsed by default, in the same colors as the terminal.
 - **Game history.** Click any file row to see every push, pull, match and resolution for that game, including failed transfers.
 - **Notes under "Needs you".** Games whose history is orphaned (the ROM was removed or re-added in RomM) and files that exist both in a platform folder and a core folder (only the newest copy is synced).
 

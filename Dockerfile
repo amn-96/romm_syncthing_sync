@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ ./src/
 RUN rm -rf ./src/experimental
-COPY romm_sync.py ./
+COPY romm_sync.py VERSION ./
 
 # Create data directories
 RUN mkdir -p /data/sync /data/cache /data/backup

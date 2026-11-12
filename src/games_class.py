@@ -248,8 +248,10 @@ class Game:
             if engine and engine.writable and not force:
                 verdict = engine.verdict(self.romm_id, sync_type, m.local, m.romm)
                 if verdict in ("conflict", "differs"):
-                    logger.warning(f"{savedata.path.name} ({verdict}): " + ("changed locally and in RomM" if verdict == "conflict" else "differs from RomM's copy and has no sync history")
-                                   + ". Leaving it for the web UI.")
+                    explanation = "changed locally and in RomM" if verdict == "conflict" else "differs from RomM's copy and has no sync history"
+                    # "differs" fires for every pre-existing file on a first run; the web UI lists them
+                    log = logger.warning if verdict == "conflict" else logger.debug
+                    log(f"{savedata.path.name} ({verdict}): {explanation}. Leaving it for the web UI.")
                     return
                 if verdict == "pull":
                     engine.pull(self.romm_id, sync_type, m.local, m.romm)

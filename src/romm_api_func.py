@@ -233,6 +233,11 @@ class RommUser:
         response.raise_for_status()
         return response.json()
 
+    def get_version(self) -> str:
+        response = requests.get(f"{self.url}/api/heartbeat", timeout=10, **self._auth_kwargs())
+        response.raise_for_status()
+        return response.json()["SYSTEM"]["VERSION"]
+
     def download_content(self, kind: str, file_id: int) -> bytes:
         """File bytes of a RomM save or state. kind is "saves" or "states"."""
         response = requests.get(f"{self.url}/api/{kind}/{file_id}/content", **self._auth_kwargs())
