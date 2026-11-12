@@ -299,9 +299,10 @@ class LoggingConfig:
         )
         logger.add(
             cls.LOG_BUFFER.append,
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+            format=format_record,
             level=log_level if log_level != "TRACE" else 5,
             filter=cls._get_filter_func(log_level),
+            colorize=True,  # the web UI turns the ANSI codes into the same colors
         )
 
         # Intercept stdlib logging (for watchdog, requests, urllib3)

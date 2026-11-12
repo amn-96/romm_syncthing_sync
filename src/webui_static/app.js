@@ -18,6 +18,8 @@ function ago(iso) {
 const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const stamp = (iso) => new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 const kb = (b) => (b == null ? "unknown" : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
+const SYNC_MODE_NAMES = { watch: "Incremental", periodic: "Periodic" };
+const syncErrors = () => state.last_sync?.errors ?? 0;
 const plural = (n, word) => `${n} ${n === 1 ? word : word.replace(/y$/, "ie")}${n === 1 ? "" : "s"}`;
 
 const filesWith = (status) => state.games.flatMap((g) => g.files.filter((f) => f.status === status).map((f) => ({ game: g, file: f })));
@@ -42,14 +44,15 @@ function renderHero() {
   const tone = count ? "critical" : "ok";
   $("#ambient").className = `ambient ${tone}`;
   const headline = count ? plural(count, "issue") : "In sync";
+  const errors = syncErrors();
   const listed = ls ? [...ls.pushed.map((f) => [f, "pushed to RomM"]), ...ls.pulled.map((f) => [f, "pulled from RomM"])] : [];
   $("#hero").innerHTML = `
     <div class="hero ${tone}"><div class="hero-card">
       <h1>${headline}</h1>
+      ${errors ? `<h1 class="sync-errors">${plural(errors, "Sync Error")}</h1>` : ""}
       <div class="hero-sub">
         ${ls ? `<span>Last sync <strong>${clock(ls.finished_at)}</strong> (${ago(ls.finished_at)})</span>
-          <span>${ls.errors ? `<strong>${ls.errors}</strong> failed` : "no errors"}</span>` : "<span>No sync has finished yet</span>"}
-        <span>Mode: ${state.sync_mode === "watch" ? "Incremental" : "Periodic"}</span>
+          ${errors ? "" : `<span class="errors-ok">0 Sync Errors</span>`}` : "<span>No sync has finished yet</span>"}
         ${state.push_only ? `<span><strong>Push-only</strong>: nothing is written to the sync folders</span>` : ""}
       </div>
       ${listed.length ? `<details class="hero-toggle">
@@ -131,9 +134,9 @@ function fileRow(game, file, side) {
 const treeOpen = new Map();  // data-tree key -> open, so the periodic re-render keeps what the user opened or closed
 const lazyBodies = new Map();  // data-tree key -> builder of the body of a tree that was rendered closed and not opened yet
 
-// Closed trees get an empty body that fillTree() builds on first open; open ones (by user choice or an open issue) are built now.
+// Closed trees get an empty body that fillTree() builds on first open; only trees the user opened are built now. `hit` just marks open issues.
 function tree(cls, key, hit, summary, body) {
-  const open = treeOpen.get(key) ?? hit;
+  const open = treeOpen.get(key) ?? false;
   if (!open) lazyBodies.set(key, body);
   return `<details class="tree ${cls} ${hit ? "has-conflict" : ""}" data-tree="${esc(key)}" ${open ? "open" : ""}>${summary}<div class="tree-body">${open ? body() : ""}</div></details>`;
 }
@@ -207,7 +210,7 @@ function renderRomm() {
 
 function renderUnmatched() {
   $("#unmatched").hidden = !state.unmatched.length;
-  $("#unmatched > summary").textContent = `Unmatched games (${state.unmatched.length})`;
+  $("#unmatched-count").textContent = plural(state.unmatched.length, "game");
   $("#unmatched-body").innerHTML = state.unmatched.map((u) => `<li><strong>${esc(u.name)}</strong> in ${esc(u.local_platform)} · ${plural(u.files.length, "file")}.
     No RomM game with this file name on this platform. Check platform_mapping.yaml and the ROM's file name.</li>`).join("");
 }
@@ -217,8 +220,8 @@ function renderBottom() {
   const count = needCount();
   const ls = state.last_sync;
   const issues = $("#bar-issues");
-  issues.textContent = count ? plural(count, "issue") : "In sync";
-  issues.classList.toggle("critical", count > 0);
+  const tone = (n) => (n ? "critical" : "ok");
+  issues.innerHTML = `<span class="${tone(count)}">${plural(count, "Issue")}</span>, <span class="${tone(syncErrors())}">${plural(syncErrors(), "Sync Error")}</span>`;
   $("#bar-last").textContent = ls ? `Last: ${ago(ls.finished_at)}` : "No sync yet";
   $("#bar-stats").innerHTML = `
     <span><strong>${state.games.length}</strong> games tracked</span>
@@ -237,6 +240,16 @@ function setActionBar(action) {
   (action ? $("#bar-menu") : $(".topbar-right")).append($(".menu"));
 }
 const STICKY_TOP_PX = 12;  // keep in sync with .bottombar { top } in styles.css
+// Land just past the point where the bar sticks, so "Needs you" sits right under it (desktop) without the bar reverting to its resting state,
+// or at the top of the page under a bottom bar (mobile).
+const PAST_STICK_PX = 16;
+$("#bar-issues").addEventListener("click", (e) => {
+  e.preventDefault();
+  const bar = $("#bottombar");
+  const barStyle = getComputedStyle(bar);
+  const covered = barStyle.position === "sticky" ? STICKY_TOP_PX + bar.offsetHeight + parseFloat(barStyle.marginBottom) - PAST_STICK_PX : STICKY_TOP_PX;
+  scrollTo({ top: $("#needs-you").getBoundingClientRect().top + scrollY - covered, behavior: "smooth" });
+});
 new IntersectionObserver(([sentinel]) => setActionBar(!sentinel.isIntersecting && sentinel.boundingClientRect.top < STICKY_TOP_PX * 2),
   { rootMargin: `-${STICKY_TOP_PX}px 0px 0px 0px` }).observe($("#bar-sentinel"));
 
@@ -447,14 +460,39 @@ function sizeOf(files) {
   return bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB` : kb(bytes);
 }
 
+const ROMM_CHECK_MS = 30 * 60 * 1000;
+let configOpen = false;  // survives renderMenu(), which rebuilds the panel after every action
+const configValue = (name, value) => (name.endsWith("_SECONDS") ? `${value} s` : name.endsWith("_DAYS") ? `${value} d` : String(value));
+
+const stat = (label, value, cls = "") => `<div class="menu-stat ${cls}"><span>${label}</span><span>${value}</span></div>`;
+let rommStatus = { version: "checking…" };  // from /api/romm-status, refreshed on its own so an unreachable RomM never blocks the page
+const rommRow = () => (rommStatus.error
+  ? stat("RomM Version", `<span class="hazard">⚠ Unreachable</span>`, "error") + `<div class="menu-note">${esc(rommStatus.error)}</div>`
+  : stat("RomM Version", esc(rommStatus.version)));
+
+async function checkRomm() {
+  rommStatus = await (await fetch("/api/romm-status")).json();
+  $("#menu-toggle").classList.toggle("warn", !!rommStatus.error);
+  $("#romm-row").innerHTML = rommRow();
+}
+
 function renderMenu() {
   const files = state.games.flatMap((g) => g.files.filter((f) => f.local));
   const saves = files.filter((f) => f.kind === "save");
   const states = files.filter((f) => f.kind === "state");
   const b = state.backups;
   const lib = state.romm_library;
-  const stat = (label, value, cls = "") => `<div class="menu-stat ${cls}"><span>${label}</span><span>${value}</span></div>`;
+  const info = state.server_info;
+  const configRows = Object.entries(info.config).map(([name, value]) => stat(`<span class="mono">${name}</span>`, esc(configValue(name, value)))).join("");
   $("#menu-panel").innerHTML = `
+    <div class="menu-label">Server info</div>
+    ${stat("RomM_Syncthing_Sync Version", esc(info.sync_version))}
+    <div id="romm-row">${rommRow()}</div>
+    ${stat("Sync Mode", SYNC_MODE_NAMES[state.sync_mode])}
+    <details class="menu-config" ${configOpen ? "open" : ""}>
+      <summary class="menu-stat"><span>Sync Configuration</span><span class="chev">▶</span></summary>
+      ${configRows}
+    </details>
     <div class="menu-label">Server stats</div>
     ${stat(plural(saves.length, "save file"), sizeOf(saves))}
     ${stat(plural(states.length, "state file"), sizeOf(states))}
@@ -486,8 +524,10 @@ async function runAction(button, action) {
 $("#menu-toggle").addEventListener("click", () => {
   const panel = $("#menu-panel");
   panel.hidden = !panel.hidden;
+  if (!panel.hidden) checkRomm();
   $("#menu-toggle").setAttribute("aria-expanded", String(!panel.hidden));
 });
+$("#menu-panel").addEventListener("toggle", (e) => (configOpen = e.target.open), true);
 $("#menu-panel").addEventListener("click", (e) => {
   const button = e.target.closest("button");
   if (!button) return;
@@ -564,10 +604,22 @@ themeBtn.addEventListener("click", () => {
 });
 
 const LOG_LINES = 500;
+// loguru's terminal colors, as SGR code -> CSS class
+const ANSI_CLASSES = { 1: "a-bold", 2: "a-dim", 31: "a-red", 32: "a-green", 33: "a-yellow", 34: "a-blue", 35: "a-magenta", 91: "a-red", 94: "a-blue", 95: "a-magenta" };
+function ansiToHtml(line) {
+  let classes = [];
+  return line.split(/\x1b\[([\d;]*)m/).map((part, i) => {
+    if (i % 2) {
+      classes = Number(part) ? [...classes, ANSI_CLASSES[part]].filter(Boolean) : [];
+      return "";
+    }
+    return classes.length ? `<span class="${classes.join(" ")}">${esc(part)}</span>` : esc(part);
+  }).join("");
+}
 async function loadLogs() {
   const pre = $("#applog-body");
   const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
-  pre.textContent = (await (await fetch("/api/logs")).json()).slice(-LOG_LINES).join("");
+  pre.innerHTML = (await (await fetch("/api/logs")).json()).slice(-LOG_LINES).map(ansiToHtml).join("");
   if (atBottom) pre.scrollTop = pre.scrollHeight;
 }
 $("#applog").addEventListener("toggle", (e) => e.target.open && loadLogs());
@@ -586,7 +638,8 @@ async function load() {
   if ($("#applog").open) loadLogs();
 }
 
-load();
+load().then(checkRomm);
+setInterval(checkRomm, ROMM_CHECK_MS);
 const refresh = () => !document.hidden && !$("#modal-root").innerHTML && $("#menu-panel").hidden && load();
 setInterval(refresh, 30000);
 document.addEventListener("visibilitychange", refresh);

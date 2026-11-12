@@ -25,6 +25,7 @@ from .conflict_resolution import ConflictResolution, LayoutUnavailable
 from .sync_orchestrator import SYNC_LOCK, SYNC_PROGRESS, SyncOrchestrator
 
 STATIC_DIR = Path(__file__).parent / "webui_static"
+SYNC_VERSION = (Path(__file__).parent.parent / "VERSION").read_text().strip()
 FILESYSTEM_TTL_SECONDS = 5
 ASSET_CACHE_SIZE = 256
 
@@ -78,6 +79,13 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
     def romm_user() -> dict:
         me = user.get_me()
         return {key: me[key] for key in ("username", "role", "avatar_path")}
+
+    def sync_configuration() -> dict:
+        """Environment settings that shape the sync, as shown in the web UI's read-only server info."""
+        timing = ({"SYNC_INTERVAL_SECONDS": cfg.SYNC_INTERVAL_SECONDS} if cfg.SYNC_MODE == "periodic"
+                  else {"WATCHDOG_DELAY_SECONDS": cfg.WATCHDOG_DELAY_SECONDS, "PULL_INTERVAL_SECONDS": cfg.PULL_INTERVAL_SECONDS})
+        return {"SYNC_MODE": cfg.SYNC_MODE, **timing, "FULL_INITIAL_SYNC": cfg.FULL_INITIAL_SYNC, "FORCE_PUSH_SYNC": cfg.FORCE_PUSH_SYNC,
+                "PUSH_ONLY": not engine.writable, "LOG_LEVEL": cfg.LOG_LEVEL, "LOG_DB_RETENTION_DAYS": cfg.LOG_DB_RETENTION_DAYS}
 
     def games_from_library() -> list[dict]:
         games: dict[int, dict] = {}
@@ -140,6 +148,7 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
         games = games_from_library()
         filesystem = filesystem_state()
         body = json.dumps(jsonable_encoder({"push_only": not engine.writable, "sync_mode": cfg.SYNC_MODE, "romm_url": cfg.ROMM_PUBLIC_URL, "user": romm_user(),
+                "server_info": {"sync_version": SYNC_VERSION, "config": sync_configuration()},
                 "last_sync": last_sync(games), "games": games, "syncthing_conflicts": filesystem["syncthing_conflicts"],
                 "orphans": store.kv_get("orphans") or [], "ambiguous": store.kv_get("ambiguous") or [], "unmatched": store.kv_get("unmatched") or [],
                 "duplicates": filesystem["duplicates"], "backups": filesystem["backups"],
@@ -149,6 +158,14 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers=headers)
         return Response(body, media_type="application/json", headers=headers)
+
+    @app.get("/api/romm-status")
+    def romm_status() -> dict:
+        """A live RomM heartbeat, kept out of /api/state so an unreachable RomM cannot break the page."""
+        try:
+            return {"version": user.get_version()}
+        except (requests.RequestException, KeyError) as error:
+            return {"error": str(error)}
 
     @app.post("/api/actions/prune-backups")
     def prune_backups() -> dict:
