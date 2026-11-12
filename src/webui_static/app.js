@@ -485,6 +485,7 @@ function renderMenu() {
   const info = state.server_info;
   const configRows = Object.entries(info.config).map(([name, value]) => stat(`<span class="mono">${name}</span>`, esc(configValue(name, value)))).join("");
   $("#menu-panel").innerHTML = `
+    <button class="menu-close" data-action="close" aria-label="Close">×</button>
     <div class="menu-label">Server info</div>
     ${stat("RomM_Syncthing_Sync Version", esc(info.sync_version))}
     <div id="romm-row">${rommRow()}</div>
@@ -521,12 +522,13 @@ async function runAction(button, action) {
   toast(response.ok ? body.message : body.detail);
 }
 
-$("#menu-toggle").addEventListener("click", () => {
-  const panel = $("#menu-panel");
-  panel.hidden = !panel.hidden;
-  if (!panel.hidden) checkRomm();
-  $("#menu-toggle").setAttribute("aria-expanded", String(!panel.hidden));
-});
+function setMenuOpen(open) {
+  $("#menu-panel").hidden = !open;
+  $("#menu-toggle").setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("menu-open", open);
+  if (open) checkRomm();
+}
+$("#menu-toggle").addEventListener("click", () => setMenuOpen($("#menu-panel").hidden));
 $("#menu-panel").addEventListener("toggle", (e) => (configOpen = e.target.open), true);
 $("#menu-panel").addEventListener("click", (e) => {
   const button = e.target.closest("button");
@@ -537,12 +539,14 @@ $("#menu-panel").addEventListener("click", (e) => {
       <div class="confirm-actions"><button class="no">No</button><button class="yes" data-action="prune-backups">Yes</button></div></div>`;
   } else if (button.classList.contains("no")) {
     renderMenu();
+  } else if (button.dataset.action === "close") {
+    setMenuOpen(false);
   } else if (button.dataset.action) {
     runAction(button, button.dataset.action);
   }
 });
 document.addEventListener("click", (e) => {
-  if (!e.composedPath().includes($(".menu"))) $("#menu-panel").hidden = true;  // the clicked button may already be replaced
+  if (!e.composedPath().includes($(".menu"))) setMenuOpen(false);  // the clicked button may already be replaced
 });
 
 function render() {
