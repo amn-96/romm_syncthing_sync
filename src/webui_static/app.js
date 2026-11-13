@@ -19,7 +19,8 @@ function ago(iso) {
 }
 const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const stamp = (iso) => new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-const shortStamp = (iso) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+// phones print 24h: the card row is tight next to a wide screenshot, and "00:07" is shorter than "12:07 AM"
+const shortStamp = (iso) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", ...(sheetLayout.matches && { hourCycle: "h23" }),
   year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
 const kb = (b) => (b == null ? "unknown" : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 const SYNC_MODE_NAMES = { watch: "Incremental", periodic: "Periodic" };
@@ -169,10 +170,42 @@ function syncFolds() {
   });
 }
 
+// The games whose files moved most recently: cover, when, how many files, and whether the game needs you. A click opens the game card.
+const RECENT_ON_PHONE = 3;
+// "now", "14m", "3h", "2d": the strip is too narrow for "14 min ago"
+function agoShort(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  return min < 1 ? "now" : min < 60 ? `${min}m` : min < 1440 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`;
+}
+function renderRecent() {
+  const byId = new Map(state.games.map((g) => [g.rom_id, g]));
+  const cards = state.recent.filter((r) => byId.has(r.rom_id)).map(({ rom_id, ts }) => {
+    const g = byId.get(rom_id);
+    const [tone, label] = g.files.some(isOpen) ? ["crit", "Conflicts"] : ["ok", "In Sync"];
+    return `<button type="button" class="recent-card" data-hist="${rom_id}" title="${esc(g.name)}" aria-label="${esc(g.name)}, synced ${ago(ts)}, ${plural(g.files.length, "file")}, ${label}">
+      ${img("cover", cover(g.cover), true)}
+      <div class="recent-text"><span class="recent-when">${CLOCK}${agoShort(ts)}</span><span class="recent-files">${plural(g.files.length, "file")}</span></div>
+      <span class="status-chip ${tone}" aria-hidden="true">${STATUS_ICONS[tone]}</span></button>`;
+  });
+  const box = $("#recent");
+  box.hidden = !cards.length;
+  box.innerHTML = cards.length ? `<div class="sub-head">Last Synced</div><div class="recent-grid">${cards.join("")}</div>` : "";
+  fitRecent();
+}
+// always one row: as many cards as fit the width, at most 3 on a phone (2 when 3 would be cramped)
+function fitRecent() {
+  const grid = $(".recent-grid");
+  if (!grid) return;
+  const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
+  const fit = sheetLayout.matches ? Math.min(columns, RECENT_ON_PHONE) : columns;
+  [...grid.children].forEach((card, i) => { card.hidden = i >= fit; });
+}
+new ResizeObserver(fitRecent).observe($("#recent"));
+
 function renderLocal() {
   const body = byPlatform().map((p) => {
     const files = p.games.flatMap((g) => g.files.filter((f) => f.local && f.status !== "blocked").map((f) => ({ g, f })));
-    const [hit, summary] = platformSummary(p, `${files.length} files`);
+    const [hit, summary] = platformSummary(p, plural(files.length, "file"));
     return tree("", `local:${p.slug}`, hit, summary, () => {
       const cores = new Map();
       for (const x of files) {
@@ -196,7 +229,7 @@ function renderLocal() {
 function renderRomm() {
   const u = state.user;
   const body = byPlatform().map((p) => {
-    const [hit, summary] = platformSummary(p, `${p.games.length} games`);
+    const [hit, summary] = platformSummary(p, plural(p.games.length, "game"));
     const games = () => p.games.map((g) => {
       const romm = g.files.filter((f) => f.romm);
       return tree("sub", `romm:${p.slug}/${g.rom_id}`, g.files.some(isOpen), `<summary><span class="game-line game-link" data-hist="${g.rom_id}">${img("mini-cover", cover(g.cover), true)}<span class="gname">${esc(g.name)}</span></span>
@@ -225,39 +258,34 @@ function renderBottom() {
   const ls = state.last_sync;
   const issues = $("#bar-issues");
   const tone = (n) => (n ? "critical" : "ok");
-  issues.innerHTML = `<span class="${tone(count)}">${plural(count, "Issue")}</span>, <span class="${tone(syncErrors())}">${plural(syncErrors(), "Sync Error")}</span>`;
+  issues.innerHTML = `<span class="${tone(count)}">${plural(count, "Issue")}</span><span class="${tone(syncErrors())}">${plural(syncErrors(), "Sync Error")}</span>`;
   $("#bar-last").textContent = ls ? `Last: ${ago(ls.finished_at)}` : "No sync yet";
+  const figure = (n, noun, tail = "") => `<strong>${n}</strong> ${n === 1 ? noun : `${noun}s`}${tail}`;
+  const ofKind = (kind) => files.filter((f) => f.kind === kind).length;
   $("#bar-stats").innerHTML = `
-    <span class="stat-line"><span class="s-games"><strong>${state.games.length}</strong> games<span class="wide"> tracked</span></span>
-    <span class="s-plats"><strong>${byPlatform().length}</strong> platforms</span></span>
-    <span class="stat-line"><span class="s-saves"><strong>${files.filter((f) => f.kind === "save").length}</strong> saves</span>
-    <span class="s-states"><strong>${files.filter((f) => f.kind === "state").length}</strong> states</span></span>`;
+    <span class="stat-line"><span class="s-games">${figure(state.games.length, "game", `<span class="wide"> tracked</span>`)}</span>
+    <span class="s-plats">${figure(byPlatform().length, "platform")}</span></span>
+    <span class="stat-line"><span class="s-saves">${figure(ofKind("save"), "save")}</span>
+    <span class="s-states">${figure(ofKind("state"), "state")}</span></span>`;
   $("#bar-romm").href = state.romm_url;
   const rommIcon = $("#bar-romm img");
   rommIcon.onerror = () => { rommIcon.onerror = null; rommIcon.src = "isotipo.svg"; };  // RomM unreachable: the bundled copy
   rommIcon.src = asset("assets/isotipo.svg");
 }
 
-// Once the hero card has scrolled away (desktop: the sticky bar reaches the top) the bar becomes the action bar and takes over the maintenance button.
-// Only the button moves: a backdrop-filter inside the sticky/fixed bar cannot blur the page, so the panel stays outside it and is placed beside the button.
-let barHoldsButton = false, lastAction = false;
-const inBar = () => lastAction || sheetLayout.matches;  // a phone's bar always holds both icons
+// Once the hero card has scrolled away the bar becomes the action bar: the issue readout joins it.
+// The maintenance panel stays outside the bar (a backdrop-filter inside the sticky/fixed bar cannot blur the page) and is placed beside the button.
+let lastAction = false;
 function setActionBar(action) {
   lastAction = action;
   const bar = $("#bottombar");
-  if (bar.classList.contains("action") === action && barHoldsButton === inBar()) return;
+  if (bar.classList.contains("action") === action) return;
   bar.classList.toggle("action", action);
-  barHoldsButton = inBar();
-  if (inBar()) $("#bar-menu").append($("#menu-toggle"));
-  else $(".menu").prepend($("#menu-toggle"));
   placeMenuPanel();
 }
 function placeMenuPanel() {
   const panel = $("#menu-panel");
-  const docked = $("#bottombar").classList.contains("action") || sheetLayout.matches;
-  panel.classList.toggle("docked", docked);
   panel.removeAttribute("style");
-  if (!docked) return;
   const button = $("#menu-toggle").getBoundingClientRect();
   Object.assign(panel.style, sheetLayout.matches
     ? { bottom: `${innerHeight - $("#bottombar").getBoundingClientRect().top}px` }
@@ -292,22 +320,41 @@ function gameHead(game, subtitle) {
 // Tabler Icons outline glyphs (MIT), inlined so they work offline and take currentColor
 const glyph = (...paths) => `<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths.map((d) => `<path d="${d}" />`).join("")}</svg>`;
 const CLOCK = glyph("M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0", "M12 7v5l3 3");
-const SYNC = glyph("M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4", "M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4");
 const STATUS_PILLS = { synced: ["ok", "In Sync"], conflict: ["crit", "Conflicts"], differs: ["crit", "Conflicts"], blocked: ["held", "Held"] };
 
 function fileHead(file) {
   return `<div class="issue-head"><span class="kind">${file.kind}${file.core ? ` · ${esc(file.core)}` : ""}</span><span class="fname">${esc(file.file_name)}</span></div>`;
 }
 
+const STATUS_ICONS = { crit: glyph("M12 5v8", "M12 18.5v.01"), ok: glyph("M5 12.5l4.5 4.5L19 7.5"), held: glyph("M9 6v12", "M15 6v12") };
+
 function statusRow(game, file, status = file.status) {
   const [tone, label] = status === "synced" && !file.last_synced ? ["held", "Not synced"] : STATUS_PILLS[status];
   const query = new URLSearchParams({ file_name: file.file_name, emulator: file.emulator, v: file.local?.modified_at ?? "" });
-  const shot = file.screenshot ? `${img("shot", `/api/games/${game.rom_id}/screenshot?${query}`, true)}<span class="status-sep"></span>` : "";
+  const shot = file.screenshot ? img("shot", `/api/games/${game.rom_id}/screenshot?${query}`, true) : "";
   const when = file.last_synced ? `<span>${shortStamp(file.last_synced)}</span><span class="dim">${ago(file.last_synced)}</span>` : `<span>Never synced</span>`;
   return `<div class="status-row">${shot}
       <div class="status-when">${CLOCK}<div>${when}</div></div>
-      <div class="status-sync">${SYNC}<span class="status-pill ${tone}">${label}</span></div>
+      <button type="button" class="status-chip ${tone}" data-label="${label}" aria-label="${label}">${STATUS_ICONS[tone]}<span class="chip-label">${label}</span></button>
     </div>`;
+}
+
+// on a phone the chip is icon-only; press-and-hold shows its label and a quick tap flashes it (wider screens print the label)
+{
+  let timer;
+  const chipOf = (e) => e.target.closest?.(".status-chip");
+  const show = (chip, on) => chip.classList.toggle("show", on);
+  document.addEventListener("pointerdown", (e) => {
+    const c = chipOf(e);
+    if (!c || e.pointerType === "mouse") return;
+    clearTimeout(timer);
+    if (c.classList.contains("show")) return show(c, false);  // a second tap dismisses the label
+    show(c, true);
+    const release = () => { timer = setTimeout(() => show(c, false), 1400); };
+    c.addEventListener("pointerup", release, { once: true });
+    c.addEventListener("pointercancel", release, { once: true });
+  });
+  document.addEventListener("contextmenu", (e) => { if (chipOf(e)) e.preventDefault(); });  // Android long-press menu
 }
 
 function copyLine(copy, newer) {
@@ -618,17 +665,19 @@ for (const type of ["touchmove", "wheel"]) {
 }
 document.addEventListener("click", (e) => {
   const path = e.composedPath();  // the clicked button may already be replaced
-  if (!path.includes($(".menu")) && !path.includes($("#menu-toggle"))) setMenuOpen(false);
+  if (!path.includes($("#menu-panel")) && !path.includes($("#menu-toggle"))) setMenuOpen(false);
 });
 
 function render() {
   lazyBodies.clear();
-  const chip = $("#push-only-chip");
-  chip.hidden = !state.push_only;
-  chip.textContent = "Push-only";
-  chip.title = PUSH_ONLY_REASON;
+  for (const chip of [$("#push-only-chip"), $("#bar-push-only")]) {
+    chip.hidden = !state.push_only;
+    chip.textContent = "Push-only";
+    chip.title = PUSH_ONLY_REASON;
+  }
   renderHero();
   renderNeedsYou();
+  renderRecent();
   renderLocal();
   renderRomm();
   renderUnmatched();
@@ -679,21 +728,42 @@ barMark.setAttribute("class", "bar-mark");
 barMark.setAttribute("aria-hidden", "true");
 barMark.removeAttribute("role");
 barMark.querySelector("title").remove();  // it would replace the button's "Maintenance" tooltip
+// the button wears a gear in place of the sync loop, so it reads as settings and not as a second logo
+const GEAR_LOOP = `<g class="mark-loop"><g class="mark-sync"><path transform="rotate(0 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/><path transform="rotate(225 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/><path transform="rotate(270 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/><path transform="rotate(315 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/></g><g class="mark-romm"><path transform="rotate(45 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/><path transform="rotate(90 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/><path transform="rotate(135 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/><path transform="rotate(180 32 32)" d="M20.61 4.5H43.39L42.36 7H21.64Z"/></g><g class="mark-tooth"><path transform="rotate(0 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(45 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(90 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(135 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(180 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(225 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(270 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/><path transform="rotate(315 32 32)" d="M25.5 5.1L27.75 -1H36.25L38.5 5.1Z"/></g></g>`;
+barMark.querySelector(".mark-loop").outerHTML = GEAR_LOOP;
 $("#menu-toggle").append(barMark);
+// desktop: the same mark leads the bar as the app's logo and scrolls to the top
+const brandMark = mark.cloneNode(true);
+brandMark.setAttribute("class", "bar-brand-mark");
+brandMark.setAttribute("aria-hidden", "true");
+brandMark.removeAttribute("role");
+brandMark.querySelector("title").remove();
+$("#bar-brand").append(brandMark);
+$("#bar-brand").addEventListener("click", (e) => { e.preventDefault(); scrollTo({ top: 0, behavior: "smooth" }); });
 // a touch enters on press and leaves on release, so these cover both hover and touch-and-hold
-for (const el of [mark, $("#menu-toggle")]) {
+for (const el of [mark, $("#menu-toggle"), $("#bar-brand")]) {
   for (const [type, spinning] of [["pointerenter", true], ["pointerleave", false], ["pointercancel", false]]) {
     el.addEventListener(type, () => el.classList.toggle("spinning", spinning));
   }
 }
 mark.addEventListener("contextmenu", (e) => e.preventDefault());  // Android long-press menu
 
-const themeBtn = $("#theme-toggle");
-themeBtn.addEventListener("click", () => {
-  const dark = document.documentElement.dataset.theme !== "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  themeBtn.textContent = dark ? "Light" : "Dark";
-});
+// the same sun/moon switch sits in the top row on a phone and in the bar on desktop
+const THEME_SWITCH = `<span class="sw-thumb"></span><span class="sw-opt">${glyph("M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0", "M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7")}</span>
+  <span class="sw-opt">${glyph("M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z")}</span>`;
+const THEME_BUTTONS = [$("#theme-toggle"), $("#bar-theme")];
+for (const button of THEME_BUTTONS) button.innerHTML = THEME_SWITCH;
+function showTheme() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  for (const button of THEME_BUTTONS) button.setAttribute("aria-checked", String(dark));
+}
+for (const button of THEME_BUTTONS) {
+  button.addEventListener("click", () => {
+    document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    showTheme();
+  });
+}
+showTheme();
 
 const LOG_LINES = 500;
 // loguru's terminal colors, as SGR code -> CSS class
