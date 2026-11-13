@@ -109,6 +109,11 @@ class Store:
     def events_since(self, ts: str) -> list[dict]:
         return self._query("SELECT * FROM sync_events WHERE ts >= ? AND action IN ('push', 'pull') AND success=1 ORDER BY id", (ts,))
 
+    def recent_moves(self, limit: int) -> list[dict]:
+        """Games whose files last moved, newest first. `match` rows (a baseline with no transfer) and failures are not movement."""
+        return self._query("SELECT rom_id, MAX(ts) AS ts FROM sync_events WHERE action IN ('push', 'pull', 'resolve_local', 'resolve_romm') "
+                           "AND success=1 GROUP BY rom_id ORDER BY ts DESC LIMIT ?", (limit,))
+
     def prune(self, retention_days: int) -> int:
         """Delete events older than `retention_days`, except each file's newest baseline row, which change detection needs."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()

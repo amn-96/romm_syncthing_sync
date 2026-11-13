@@ -26,9 +26,11 @@
   --romm: #553e98;
   --romm-deep: #452788;
   --romm-tint: rgba(85, 62, 152, 0.10);
+  --romm-fill: #553e98;  /* RomM brand purple, for solid fills behind white; the dark theme keeps it rather than --romm's lighter lilac */
   --st: #b85c1e;
   --st-tint: rgba(184, 92, 30, 0.10);
   --mark-sync: #0284c7;
+  --mark-tooth: #4b4e5c;
   --chip-bg: rgba(0, 0, 0, 0.045);
 
   --shadow-card: 0 1px 2px rgba(20, 16, 40, 0.06), 0 8px 24px -12px rgba(20, 16, 40, 0.18);
@@ -66,6 +68,7 @@
   --romm-tint: rgba(139, 116, 232, 0.15);
   --st-tint: rgba(184, 92, 30, 0.16);
   --mark-sync: #38bdf8;
+  --mark-tooth: #c9ccd8;
   --chip-bg: rgba(255, 255, 255, 0.07);
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
@@ -84,6 +87,7 @@ body {
   transition: background 0.4s ease, color 0.4s ease;
 }
 button { font-family: var(--font-ui); }
+:focus-visible { outline: 2px solid var(--romm); outline-offset: 2px; }
 
 .ambient {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
@@ -99,6 +103,7 @@ button { font-family: var(--font-ui); }
 .mark-ink { fill: var(--text); }
 .mark-sync { fill: var(--mark-sync); }
 .mark-romm { fill: var(--romm); }
+.mark-tooth { fill: var(--mark-tooth); }
 /* a paused animation holds its angle, so the loop stays wherever it was let go */
 .mark-loop { transform-origin: 32px 32px; animation: mark-spin 1.6s linear infinite paused; }
 .spinning .mark-loop, .menu-toggle[aria-expanded="true"] .mark-loop { animation-play-state: running; }
@@ -113,18 +118,15 @@ button { font-family: var(--font-ui); }
 .pill:hover { color: var(--text); }
 
 /* --- actions menu --- */
-.menu { position: relative; }
 .menu-toggle { position: relative; width: 32px; height: 30px; padding: 0; justify-content: center; }
 .bar-mark { display: none; overflow: visible; }
 #bar-menu .menu-toggle { display: flex; width: auto; height: auto; border: 0; background: none; }
-#bar-menu .menu-toggle > svg:not(.bar-mark) { display: none; }
 #bar-menu .bar-mark { display: block; }
 .menu-panel {
-  position: absolute; top: calc(100% + 10px); right: 0; width: 300px; z-index: 40;
+  position: fixed; width: 300px; z-index: 40;
   background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
   border: 1px solid var(--hairline); border-radius: 18px; box-shadow: var(--shadow-raised); padding: 16px 16px 14px;
 }
-.menu-panel.docked { position: fixed; }
 .menu-close { display: none; }
 .menu-label { font-size: 11.5px; font-weight: 650; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; margin: 14px 0 8px; }
 .menu-label:first-of-type { margin-top: 0; }
@@ -225,6 +227,25 @@ button { font-family: var(--font-ui); }
 }
 .plat-icon { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
 
+/* --- recently synced games --- */
+#recent { margin: 0 0 22px; padding-bottom: 22px; border-bottom: 1px solid var(--hairline-strong); }
+#recent .sub-head { margin-top: 0; }
+.recent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+.recent-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left;
+  border: 1px solid var(--hairline); border-radius: var(--radius); padding: 10px 12px 10px 10px; cursor: pointer;
+  background: var(--surface-flat); box-shadow: var(--shadow-card); color: var(--text);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.recent-card[hidden] { display: none; }
+.recent-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-raised); }
+.recent-card .cover { width: 48px; border-radius: 8px; }
+.recent-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.recent-when { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.recent-when .glyph { width: 15px; height: 15px; color: var(--text-dim); flex-shrink: 0; }
+.recent-files { color: var(--text-dim); font-size: 13px; }
+.recent-card .status-chip { cursor: inherit; width: 34px; height: 34px; padding: 0; margin-left: 0; border-radius: 10px; }
+
 /* --- split dashboard --- */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
 .split > *, .conflict-card > div, .compare > * { min-width: 0; }
@@ -288,7 +309,12 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   display: grid; place-items: center; z-index: 50; padding: 24px;
 }
 @media (hover: hover) and (pointer: fine) { .scrim { background: rgba(20, 18, 24, 0.35); backdrop-filter: blur(4px); } }
+/* the page must not scroll under an open card, on any screen; a stable gutter keeps the layout from shifting when its scrollbar is hidden */
+html { scrollbar-gutter: stable; }
+body:has(#modal-root > *) { overflow: hidden; }
+.scrim { overscroll-behavior: none; }
 .modal {
+  overscroll-behavior: contain;
   width: min(820px, 100%); background: var(--surface-solid); border-radius: 24px; box-shadow: var(--shadow-raised);
   border: 1px solid var(--hairline); padding: 26px 28px 24px; max-height: 92vh; overflow: auto;
 }
@@ -369,11 +395,28 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 .bottombar strong { color: var(--text); font-weight: 650; }
 .bar-stats { display: flex; gap: 22px; }
 .stat-line { display: contents; }  /* desktop: one row of four; the phone stacks them in two lines */
-.bar-issues, .bar-last, #bar-menu { display: none; }
+.bar-issues, .bar-last { display: none; }
 .bar-issues { font-weight: 650; text-decoration: none; }
+.bar-issues span + span { margin-left: 0.7em; }
 .bar-issues .ok { color: var(--ok); }
 .bar-issues .critical { color: var(--crit); }
-.bottombar.action .bar-issues, .bottombar.action .bar-last, .bottombar.action #bar-menu { display: block; }
+.bottombar.action .bar-issues, .bottombar.action .bar-last { display: block; }
+.bar-tools { display: contents; }  /* phone: the icons are direct children of the bar; desktop groups them */
+#bar-push-only, .bar-brand { display: none; }
+/* light/dark switch: the thumb sits under the selected mode's icon, in RomM's brand purple */
+.theme-switch {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr; align-items: center; box-sizing: border-box; width: 64px; height: 34px; flex-shrink: 0; padding: 3px;
+  border: 1px solid var(--hairline-strong); border-radius: 12px; background: var(--chip-bg); cursor: pointer;
+}
+.sw-thumb {
+  position: absolute; top: 3px; left: 3px; width: calc(50% - 3px); height: calc(100% - 6px); border-radius: 9px; background: var(--romm-fill);
+  box-shadow: 0 1px 3px rgba(20, 16, 40, 0.3); transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.theme-switch[aria-checked="true"] .sw-thumb { transform: translateX(100%); }
+.sw-opt { position: relative; display: grid; place-items: center; color: var(--text-dim); transition: color 0.2s ease; }
+.sw-opt .glyph { width: 18px; height: 18px; color: inherit; }
+.theme-switch[aria-checked="false"] .sw-opt:nth-child(2), .theme-switch[aria-checked="true"] .sw-opt:nth-child(3) { color: #fff; }
+#bar-theme { display: none; }  /* the bar carries it on desktop only; a phone has it in the top row */
 .romm-link { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--text-dim); text-decoration: none; font-weight: 600; }
 .romm-link img { width: 28px; height: 28px; }
 .romm-icon { position: relative; display: flex; }
@@ -401,7 +444,7 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .shell { padding-bottom: 48px; }
   .hero { margin-bottom: 18px; }
   .bottombar {
-    position: sticky; top: 12px; left: auto; right: auto; bottom: auto; height: 60px; margin-bottom: 34px; padding: 0 24px;
+    position: sticky; top: 12px; left: auto; right: auto; bottom: auto; height: 60px; margin-bottom: 10px; padding: 0 24px;
     border: 1px solid var(--hairline); border-radius: 22px; box-shadow: var(--shadow-card);
     transition: border-radius 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
     will-change: transform;  /* Safari does not repaint content inserted into a sticky backdrop-filter box (the stats) until its style changes */
@@ -409,15 +452,29 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .bottombar.action { border-radius: 16px; box-shadow: var(--shadow-raised); }
   /* icon sizes do not change as the bar docks. The RomM logo is a filled disc and the mark is open pixels, so the mark runs larger to look the same size. */
   .bottombar .romm-link img, .bottombar.action .romm-link img { width: 24px; height: 24px; }
-  #bar-menu .bar-mark { width: 32px; height: 32px; }
+  #bar-menu .bar-mark { width: 38px; height: 38px; }
   .bottombar .romm-link, .bottombar.action .romm-link, #bar-menu .menu-toggle { width: 36px; height: 36px; }
   .bottombar .romm-link { box-sizing: border-box; justify-content: center; padding: 0; }
-  #bar-menu { margin-left: -20px; margin-right: -2px; }
+  /* the bar is the page header: it rests at the top of the page, stuck where it docks, so only its look changes once the hero has scrolled away */
+  .topbar { display: none; }
+  .shell { padding-top: 12px; }
+  .bar-brand { display: block; flex-shrink: 0; margin: 0 -4px 0 -6px; line-height: 0; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+  .bar-brand-mark { width: 38px; height: 38px; overflow: visible; }
+  .bar-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  /* the issue readout joins on the right, beside the tools, so the stats stay where they are when the bar docks */
+  .bottombar.action .bar-issues { margin-left: auto; }
+  .bottombar.action .bar-tools { margin-left: 0; }
+  .bar-tools .romm-link { margin-left: 0; }
+  #bar-menu { margin-right: -2px; }
+  #bar-theme { display: grid; }
+  #bar-push-only { display: inline-flex; }
+  #bar-push-only[hidden] { display: none; }
+  .bottombar .romm-link:hover, #bar-menu .menu-toggle:hover, #bar-menu .menu-toggle[aria-expanded="true"] {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 28%, transparent);
+  }
 }
 .bottombar.action .bar-issues, .bottombar.action .bar-last { animation: bar-item-in 0.35s 0.08s both; }
-.bottombar.action #bar-menu { animation: bar-fade-in 0.35s 0.08s both; }
 @keyframes bar-item-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
-@keyframes bar-fade-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bottombar * { animation: none !important; } }
 @media (max-width: 900px) { .bottombar.action .bar-stats { display: none; } }
 
@@ -444,20 +501,32 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   border: 1px solid var(--hairline-strong); border-radius: 20px; padding: 16px; display: grid; gap: 12px;
   background: color-mix(in srgb, var(--text) 2.5%, var(--surface-solid)); box-shadow: var(--shadow-card);
 }
-.status-row {
-  display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 16px;
-  background: var(--chip-bg); font-size: 13.5px; min-width: 0;
-}
-.status-row .shot { height: 52px; width: auto; max-width: 96px; object-fit: cover; border-radius: 8px; background: var(--chip-bg); }
-.status-sep { align-self: stretch; width: 1px; background: var(--hairline-strong); }
+.status-row { display: flex; align-items: center; gap: 12px; padding: 0 2px 12px; border-bottom: 1px solid var(--hairline); font-size: 13.5px; min-width: 0; }
+.status-row .shot { height: 72px; width: auto; max-width: 128px; object-fit: contain; border-radius: 8px; background: var(--chip-bg); flex-shrink: 0; }
 .status-when { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .status-when > div { display: grid; gap: 1px; font-weight: 600; white-space: nowrap; }
-.status-sync { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .glyph { width: 20px; height: 20px; flex-shrink: 0; color: var(--text-dim); }
-.status-pill { padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
-.status-pill.ok { background: var(--ok-tint); color: var(--ok-deep); }
-.status-pill.crit { background: var(--crit-tint); color: var(--crit-deep); }
-.status-pill.held { background: var(--chip-bg); color: var(--text-dim); }
+.status-chip {
+  position: relative; margin-left: auto; flex-shrink: 0; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 10px;
+  display: grid; place-items: center; cursor: default; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
+}
+.status-chip .glyph { width: 18px; height: 18px; color: inherit; stroke-width: 2.6; }
+.status-chip.ok { background: var(--ok-tint); color: var(--ok-deep); }
+.status-chip.crit { background: var(--crit-tint); color: var(--crit-deep); }
+.status-chip.held { background: var(--chip-bg); color: var(--text-dim); }
+.status-chip::after {
+  content: attr(data-label); position: absolute; right: 0; bottom: calc(100% + 8px); padding: 5px 10px; border-radius: 8px;
+  background: var(--text); color: var(--surface-solid); font-size: 12.5px; font-weight: 650; white-space: nowrap;
+  opacity: 0; transform: translateY(3px); pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease; z-index: 2;
+}
+.status-chip.show::after { opacity: 1; transform: none; }
+.chip-label { display: none; }
+@media (min-width: 641px) {
+  .status-chip { width: auto; display: flex; align-items: center; gap: 7px; padding: 0 13px 0 10px; border-radius: 10px; height: 32px; font-size: 12.5px; font-weight: 700; }
+  .status-chip .glyph { width: 15px; height: 15px; }
+  .chip-label { display: inline; }
+  .status-chip::after { display: none; }
+}
 .card-foot { display: flex; align-items: start; gap: 12px; }
 .card-foot .pill { margin-left: auto; }
 .file-history { flex: 1; min-width: 0; }
@@ -502,6 +571,8 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .topbar { flex-wrap: wrap; gap: 10px; padding: 14px 0 10px; }
   .brand-mark { width: 36px; height: 36px; }
   .topbar-right { gap: 8px; }
+  .theme-switch { width: 72px; height: 36px; border-radius: 12px; }
+  .theme-switch::after { content: ""; position: absolute; inset: -4px; }  /* the box looks 36px tall but the touch target is 44px */
   .hero::before { inset: -40px -30px; }
   .hero-card { padding: 20px 4px 12px; }
   .hero h1 { font-size: 30px; }
@@ -510,6 +581,16 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .conflict-card.plain { grid-template-columns: minmax(0, 1fr) auto; }
   .conflict-card .cover { width: 56px; }
   .conflict-card .title { font-size: 15.5px; }
+  .recent-grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 10px; }
+  .recent-card { padding: 8px 8px 8px 8px; gap: 8px; }
+  .recent-card .cover { width: 36px; border-radius: 6px; }
+  .recent-when { font-size: 12.5px; gap: 4px; }
+  .recent-when .glyph { width: 13px; height: 13px; }
+  .recent-files { font-size: 12px; }
+  /* the status rides the card's top-right corner so the time keeps the full width */
+  .recent-card { position: relative; grid-template-columns: auto minmax(0, 1fr); padding-right: 10px; }
+  .recent-card .status-chip { position: absolute; top: -7px; right: -5px; width: 24px; height: 24px; border-radius: 8px; box-shadow: 0 0 0 3px var(--bg, #0b0b14); }
+  .recent-card .status-chip .glyph { width: 14px; height: 14px; }
   .panel { padding: 14px 10px 10px; border-radius: 18px; }
   details.tree .tree-body { padding-left: 12px; }
   .file-row { gap: 8px; padding-left: 6px; padding-right: 6px; }
@@ -519,8 +600,7 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .bar-stats { flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
   .stat-line { display: flex; gap: 12px; }
   .stat-line .wide { display: none; }
-  .bottombar #bar-menu { display: block; margin: 0; }  /* both icons are on the bar from the first paint */
-  .bottombar.action #bar-menu { animation: none; }  /* already on the bar, so docking must not fade it in again */
+  .bottombar #bar-menu { margin: 0; }
   .bottombar.action { flex-wrap: nowrap; gap: 12px; padding: 8px var(--bar-side) calc(8px + env(safe-area-inset-bottom)); }
   .bottombar.action .bar-last { display: none; }  /* the age of the last sync is not worth the room on a phone */
   .bottombar.action .bar-issues { margin-right: auto; }
@@ -539,20 +619,23 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
     padding: 0; border: 0; border-radius: 50%; background: var(--chip-bg); color: var(--text-dim);
   }
   .menu-panel { padding-top: 42px; overscroll-behavior: contain; }
-  body.menu-open, body:has(#modal-root > *) { overflow: hidden; }  /* page must not scroll under the open sheet or card */
+  body.menu-open { overflow: hidden; }  /* page must not scroll under the open sheet */
   body.menu-open::before { content: ""; position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.45); touch-action: none; overscroll-behavior: none; }
   .menu-panel[hidden] { display: block !important; visibility: hidden; opacity: 0; transform: translateY(32px); }
-  .scrim { padding: 10px; background: rgba(0, 0, 0, 0.6); touch-action: none; overscroll-behavior: none; }
-  .modal { touch-action: pan-y; overscroll-behavior: contain; }
-  .modal { padding: 18px 16px; border-radius: 18px; }
+  .scrim { padding: 10px; background: rgba(0, 0, 0, 0.6); touch-action: none; }
+  .modal { touch-action: pan-y; }
+  .modal { padding: 18px 12px; border-radius: 18px; }
+  .compare { gap: 4px; }
+  .st-group, .compare.grouped { padding: 3px; border-radius: 16px; }
+  .side.compact { padding: 10px 12px; }
   .modal.wide { min-height: 0; }
   .modal-head { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; }
   .modal-head .cover { width: 56px; }
   .modal-head h3 { font-size: 20px; }
   .history li { grid-template-columns: 1fr; gap: 4px; }
   .history .detail { display: block; margin-left: 0; }
-  .issue { padding: 12px; }
-  .status-row { gap: 8px; padding: 8px 10px; }
-  .status-row .shot { height: 40px; max-width: 56px; }
-  .status-sync .glyph { display: none; }
+  .issue { padding: 12px 10px; }
+  .status-row { gap: 10px; }
+  .status-row .shot { width: 80px; height: auto; max-height: 60px; object-position: left center; background: none; }
+  .status-when > div { white-space: normal; }
 }
