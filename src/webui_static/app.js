@@ -322,7 +322,7 @@ function conflictIssue(game, file, firstSeen = false) {
   const localNewer = new Date(file.local.modified_at) > new Date(file.romm.modified_at);
   const attrs = `data-rom="${game.rom_id}" data-file="${esc(file.file_name)}" data-emu="${esc(file.emulator)}" data-kind="${file.kind}"`;
   return `<div class="issue">${fileHead(file)}${statusRow(game, file)}
-      <div class="compare">
+      <div class="compare ${firstSeen ? "grouped" : ""}">
         ${issueSide("local", "Syncthing", copyLine(file.local, localNewer && !firstSeen), keepButton("local", "Keep Syncthing copy", attrs))}
         ${issueSide("romm", "RomM", copyLine(file.romm, !localNewer && !firstSeen), keepButton("romm", "Keep RomM copy", attrs, state.push_only ? PUSH_ONLY_REASON : ""))}
       </div></div>`;
@@ -360,9 +360,11 @@ function syncthingFile(copies, game) {
   return `<div class="issue">
       <div class="issue-head"><span class="kind">syncthing</span><span class="fname">${esc(copies[0].file_name)}</span></div>
       ${file ? statusRow(game, file, "conflict") : ""}
-      <div class="side compact local"><h4>Current file</h4>
-        <div class="st-copy first"><div class="copy">${copyLine(current, false)}</div>${bulkButton(copies[0].file_name, "Keep current copy")}</div></div>
-      <div class="side compact romm"><h4>${plural(copies.length, "conflict copy")}</h4>${rows}</div>
+      <div class="st-group">
+        <div class="side compact local"><h4>Current file</h4>
+          <div class="st-copy first"><div class="copy">${copyLine(current, false)}</div>${bulkButton(copies[0].file_name, "Keep current copy")}</div></div>
+        <div class="side compact st"><h4>${plural(copies.length, "conflict copy")}</h4>${rows}</div>
+      </div>
     </div>`;
 }
 
@@ -395,7 +397,10 @@ function openGroup(key) {
     section("Changed on both sides", g.conflicts.map((f) => conflictIssue(g.game, f))) +
     section("Differs, no sync history (a one-time pick, then they sync normally)", g.differs.map((f) => conflictIssue(g.game, f, true))) +
     (g.syncthing.length ? syncthingSection(g.syncthing, g.game) : "") +
-    section("Held RomM downloads", g.blocked.map((f) => blockedIssue(g.game, f))), "wide");
+    section("Held RomM downloads", g.blocked.map((f) => blockedIssue(g.game, f))) +
+    section("No Conflict", (g.game?.files ?? [])
+      .filter((f) => !isOpen(f) && f.status !== "blocked" && !g.syncthing.some((c) => c.file_name === f.file_name))
+      .map((f) => `<div class="issue">${fileHead(f)}${statusRow(g.game, f)}</div>`)), "wide");
   $(".scrim").onclick = (e) => {
     if (e.target.classList.contains("scrim") || e.target.classList.contains("close")) return closeModal();
     const bulk = e.target.closest("[data-bulk]")?.dataset.bulk;
