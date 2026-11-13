@@ -1,6 +1,6 @@
-/* AmnServ: romm_sync — house tokens (vitals/brew) plus a RomM violet for the server side */
+/* Web UI styles. Theme tokens (dark and light) first, then layout and components. RomM violet marks RomM-side elements. */
+/* Colors follow RomM's palette (frontend/src/styles/tokens.css in rommapp/romm). */
 
-/* RomM's palette (frontend/src/styles/tokens.css) on the house glass/flat shapes */
 :root {
   --bg: #f5f5fa;
   --surface: rgba(255, 255, 255, 0.66);
@@ -160,7 +160,7 @@ button { font-family: var(--font-ui); }
   position: relative; margin-bottom: 34px;
 }
 .hero::before {
-  content: ""; position: absolute; inset: -70px -100px; pointer-events: none; opacity: 0.55;
+  content: ""; position: absolute; inset: -70px -100px; pointer-events: none; opacity: 0.8;
   /* fades to nothing inside the box (the ellipse radii equal half its size), so no edge shows and no blur filter is needed */
   background: radial-gradient(ellipse 50% 50% at 50% 50%, var(--halo) 0%, color-mix(in srgb, var(--halo) 45%, transparent) 40%,
     color-mix(in srgb, var(--halo) 12%, transparent) 72%, transparent 100%);
@@ -168,9 +168,8 @@ button { font-family: var(--font-ui); }
 .hero.ok { --halo: var(--ok-halo); --tone: var(--ok-deep); }
 .hero.critical { --halo: var(--crit-halo); --tone: var(--crit); }
 .hero-card {
-  position: relative; background: var(--surface);  /* translucent so the halo behind still tints it; no blur needed on a smooth gradient */
-  border: 1px solid var(--hairline); border-radius: 22px; box-shadow: var(--shadow-raised);
-  padding: 30px 34px 22px;
+  position: relative;  /* no card: text on the halo, so nothing about it reads as clickable */
+  padding: 30px 6px 14px;
 }
 .hero h1 {
   font-size: clamp(32px, 4.8vw, 54px); font-weight: 750; letter-spacing: -0.025em; line-height: 1;
@@ -181,6 +180,10 @@ button { font-family: var(--font-ui); }
 .hero-sub .errors-ok { color: var(--ok-deep); font-weight: 600; }
 .hero-sub strong { color: var(--text); font-weight: 600; }
 .hero-toggle { margin-top: 18px; }
+.hero-toggle > summary { list-style: none; width: fit-content; }
+.hero-toggle > summary::-webkit-details-marker { display: none; }
+.hero-toggle .chev { font-size: 11px; transition: transform 0.2s ease; }
+.hero-toggle[open] .chev { transform: rotate(90deg); }
 .hero-files { list-style: none; margin-top: 12px; display: grid; gap: 4px; }
 .hero-files li {
   display: flex; gap: 12px; align-items: center; padding: 9px 14px; border-radius: 12px;
@@ -365,6 +368,7 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 }
 .bottombar strong { color: var(--text); font-weight: 650; }
 .bar-stats { display: flex; gap: 22px; }
+.stat-line { display: contents; }  /* desktop: one row of four; the phone stacks them in two lines */
 .bar-issues, .bar-last, #bar-menu { display: none; }
 .bar-issues { font-weight: 650; text-decoration: none; }
 .bar-issues .ok { color: var(--ok); }
@@ -403,10 +407,12 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
     will-change: transform;  /* Safari does not repaint content inserted into a sticky backdrop-filter box (the stats) until its style changes */
   }
   .bottombar.action { border-radius: 16px; box-shadow: var(--shadow-raised); }
-  .bottombar.action .romm-link img { width: 24px; height: 24px; }
+  /* icon sizes do not change as the bar docks. The RomM logo is a filled disc and the mark is open pixels, so the mark runs larger to look the same size. */
+  .bottombar .romm-link img, .bottombar.action .romm-link img { width: 24px; height: 24px; }
   #bar-menu .bar-mark { width: 32px; height: 32px; }
-  .bottombar.action .romm-link, #bar-menu .menu-toggle { width: 42px; height: 42px; }
-  #bar-menu { margin-left: -20px; margin-right: -5px; }
+  .bottombar .romm-link, .bottombar.action .romm-link, #bar-menu .menu-toggle { width: 36px; height: 36px; }
+  .bottombar .romm-link { box-sizing: border-box; justify-content: center; padding: 0; }
+  #bar-menu { margin-left: -20px; margin-right: -2px; }
 }
 .bottombar.action .bar-issues, .bottombar.action .bar-last { animation: bar-item-in 0.35s 0.08s both; }
 .bottombar.action #bar-menu { animation: bar-fade-in 0.35s 0.08s both; }
@@ -492,12 +498,12 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 
 /* --- phones --- */
 @media (max-width: 640px) {
-  .shell { padding: 8px 16px 110px; }
+  .shell { padding: 8px max(16px, env(safe-area-inset-right)) 110px max(16px, env(safe-area-inset-left)); }
   .topbar { flex-wrap: wrap; gap: 10px; padding: 14px 0 10px; }
   .brand-mark { width: 36px; height: 36px; }
   .topbar-right { gap: 8px; }
   .hero::before { inset: -40px -30px; }
-  .hero-card { padding: 20px; }
+  .hero-card { padding: 20px 4px 12px; }
   .hero h1 { font-size: 30px; }
   .hero-sub { font-size: 14px; }
   .conflict-card { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; padding: 10px 12px 10px 10px; }
@@ -508,11 +514,20 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   details.tree .tree-body { padding-left: 12px; }
   .file-row { gap: 8px; padding-left: 6px; padding-right: 6px; }
   .file-row .when { font-size: 11.5px; }
-  .bottombar { gap: 12px; padding: 10px 16px; font-size: 12.5px; }
-  .bar-stats { flex-wrap: wrap; gap: 2px 12px; flex: 1; min-width: 0; }
-  .bottombar.action { flex-wrap: nowrap; gap: 12px; padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
-  .bottombar.action .bar-last { margin-right: auto; color: var(--text-dim); }
-  .bottombar.action .romm-link { margin-left: 0; }
+  /* the fixed bar sits at the screen's rounded bottom corners: the home-indicator inset tracks the corner radius, so inset the sides with it (landscape adds the notch insets) */
+  .bottombar { --bar-side: max(14px, env(safe-area-inset-left), env(safe-area-inset-right), calc(env(safe-area-inset-bottom) * 0.85)); gap: 12px; padding: 8px var(--bar-side) calc(8px + env(safe-area-inset-bottom)); font-size: 12.5px; }
+  .bar-stats { flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+  .stat-line { display: flex; gap: 12px; }
+  .stat-line .wide { display: none; }
+  .bottombar #bar-menu { display: block; margin: 0; }  /* both icons are on the bar from the first paint */
+  .bottombar.action #bar-menu { animation: none; }  /* already on the bar, so docking must not fade it in again */
+  .bottombar.action { flex-wrap: nowrap; gap: 12px; padding: 8px var(--bar-side) calc(8px + env(safe-area-inset-bottom)); }
+  .bottombar.action .bar-last { display: none; }  /* the age of the last sync is not worth the room on a phone */
+  .bottombar.action .bar-issues { margin-right: auto; }
+  /* icon sizes are the same at rest and docked (the mark runs larger because the RomM logo is a filled disc): 44px boxes are the minimum comfortable touch target */
+  .bottombar .romm-link, .bottombar.action .romm-link, #bar-menu .menu-toggle { box-sizing: border-box; width: 44px; height: 44px; justify-content: center; padding: 0; border-radius: 12px; margin-left: 0; }
+  .bottombar .romm-link img, .bottombar.action .romm-link img { width: 28px; height: 28px; }
+  #bar-menu .bar-mark { width: 38px; height: 38px; }
 
   /* bottom sheet: fixed to the viewport from the header, anchored on top of the bar once it holds the button */
   .menu-panel {
@@ -524,10 +539,11 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
     padding: 0; border: 0; border-radius: 50%; background: var(--chip-bg); color: var(--text-dim);
   }
   .menu-panel { padding-top: 42px; overscroll-behavior: contain; }
-  body.menu-open { overflow: hidden; }  /* page must not scroll under the open sheet */
+  body.menu-open, body:has(#modal-root > *) { overflow: hidden; }  /* page must not scroll under the open sheet or card */
   body.menu-open::before { content: ""; position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.45); touch-action: none; overscroll-behavior: none; }
   .menu-panel[hidden] { display: block !important; visibility: hidden; opacity: 0; transform: translateY(32px); }
-  .scrim { padding: 10px; }
+  .scrim { padding: 10px; background: rgba(0, 0, 0, 0.6); touch-action: none; overscroll-behavior: none; }
+  .modal { touch-action: pan-y; overscroll-behavior: contain; }
   .modal { padding: 18px 16px; border-radius: 18px; }
   .modal.wide { min-height: 0; }
   .modal-head { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; }
