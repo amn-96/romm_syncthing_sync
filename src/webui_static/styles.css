@@ -26,6 +26,8 @@
   --romm: #553e98;
   --romm-deep: #452788;
   --romm-tint: rgba(85, 62, 152, 0.10);
+  --st: #b85c1e;
+  --st-tint: rgba(184, 92, 30, 0.10);
   --mark-sync: #0284c7;
   --chip-bg: rgba(0, 0, 0, 0.045);
 
@@ -62,6 +64,7 @@
   --romm: #8b74e8;
   --romm-deep: #a18fff;
   --romm-tint: rgba(139, 116, 232, 0.15);
+  --st-tint: rgba(184, 92, 30, 0.16);
   --mark-sync: #38bdf8;
   --chip-bg: rgba(255, 255, 255, 0.07);
 
@@ -385,6 +388,9 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 /* the RomM logo is a filled disc and the mark is open pixels, so the mark runs larger to look the same size */
 .bottombar.action .romm-link img { width: 19px; height: 19px; }
 #bar-menu .bar-mark { width: 26px; height: 26px; }
+/* the two bar buttons read as one pair, so they sit closer than the bar's gap */
+/* the negative right margin cancels the mark's inset in its box, so its edge mirrors the issue readout's */
+#bar-menu { margin-left: -2px; margin-right: -4px; }
 
 /* desktop: a second card under the hero that sticks to the top edge as the page scrolls past it */
 @media (min-width: 641px) {
@@ -400,6 +406,7 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .bottombar.action .romm-link img { width: 24px; height: 24px; }
   #bar-menu .bar-mark { width: 32px; height: 32px; }
   .bottombar.action .romm-link, #bar-menu .menu-toggle { width: 42px; height: 42px; }
+  #bar-menu { margin-left: -20px; margin-right: -5px; }
 }
 .bottombar.action .bar-issues, .bottombar.action .bar-last { animation: bar-item-in 0.35s 0.08s both; }
 .bottombar.action #bar-menu { animation: bar-fade-in 0.35s 0.08s both; }
@@ -468,7 +475,11 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 .st-copy { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .st-copy .copy { flex: 1; min-width: 200px; }
 .st-actions { display: flex; gap: 8px; }
-.pill.use { background: var(--romm); color: #fff; }
+.pill.use { background: var(--st); color: #fff; }
+.st-group { display: grid; gap: 4px; }
+.st-group, .compare.grouped { padding: 4px; border: 1px solid var(--hairline-strong); border-radius: 18px; }
+.side.st { background: var(--st-tint); }
+.side.st h4 { color: var(--st); }
 .pill:disabled { color: var(--text-faint); cursor: not-allowed; }
 .mono { font-family: var(--font-mono); font-size: 12px; }
 .history { list-style: none; display: grid; gap: 6px; }
