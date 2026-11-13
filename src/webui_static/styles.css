@@ -26,6 +26,7 @@
   --romm: #553e98;
   --romm-deep: #452788;
   --romm-tint: rgba(85, 62, 152, 0.10);
+  --mark-sync: #0284c7;
   --chip-bg: rgba(0, 0, 0, 0.045);
 
   --shadow-card: 0 1px 2px rgba(20, 16, 40, 0.06), 0 8px 24px -12px rgba(20, 16, 40, 0.18);
@@ -61,6 +62,7 @@
   --romm: #8b74e8;
   --romm-deep: #a18fff;
   --romm-tint: rgba(139, 116, 232, 0.15);
+  --mark-sync: #38bdf8;
   --chip-bg: rgba(255, 255, 255, 0.07);
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
@@ -90,8 +92,14 @@ button { font-family: var(--font-ui); }
 .shell { max-width: 1360px; margin: 0 auto; padding: 20px 32px 120px; }
 
 .topbar { display: flex; align-items: center; gap: 14px; padding: 22px 0 14px; }
-.brand-mark { width: 40px; height: 40px; }
-.brand { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+.brand-mark { width: 44px; height: 44px; overflow: visible; touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.mark-ink { fill: var(--text); }
+.mark-sync { fill: var(--mark-sync); }
+.mark-romm { fill: var(--romm); }
+/* a paused animation holds its angle, so the loop stays wherever it was let go */
+.mark-loop { transform-origin: 32px 32px; animation: mark-spin 1.6s linear infinite paused; }
+.spinning .mark-loop, .menu-toggle[aria-expanded="true"] .mark-loop { animation-play-state: running; }
+@keyframes mark-spin { to { transform: rotate(360deg); } }
 .topbar-right { margin-left: auto; display: flex; gap: 12px; align-items: center; }
 
 .pill {
@@ -104,11 +112,16 @@ button { font-family: var(--font-ui); }
 /* --- actions menu --- */
 .menu { position: relative; }
 .menu-toggle { position: relative; width: 32px; height: 30px; padding: 0; justify-content: center; }
+.bar-mark { display: none; overflow: visible; }
+#bar-menu .menu-toggle { display: flex; width: auto; height: auto; border: 0; background: none; }
+#bar-menu .menu-toggle > svg:not(.bar-mark) { display: none; }
+#bar-menu .bar-mark { display: block; }
 .menu-panel {
   position: absolute; top: calc(100% + 10px); right: 0; width: 300px; z-index: 40;
-  background: var(--surface); backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
   border: 1px solid var(--hairline); border-radius: 18px; box-shadow: var(--shadow-raised); padding: 16px 16px 14px;
 }
+.menu-panel.docked { position: fixed; }
 .menu-close { display: none; }
 .menu-label { font-size: 11.5px; font-weight: 650; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; margin: 14px 0 8px; }
 .menu-label:first-of-type { margin-top: 0; }
@@ -342,10 +355,10 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
   border-top: 1px solid var(--hairline); font-size: 13.5px; color: var(--text-dim);
 }
-/* the bar is the only surface content scrolls beneath, so it alone blurs, and only where there is a pointer to afford it */
+/* the bar and the menu over it are the only surfaces content scrolls beneath, so they alone blur, and only where there is a pointer to afford it */
 @media (hover: hover) and (pointer: fine) {
-  .bottombar { background: var(--surface); backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3); }
-  .bottombar.action { background: color-mix(in srgb, var(--surface-solid) 80%, transparent); }
+  .bottombar, .menu-panel { background: var(--surface); backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3); }
+  .bottombar.action, .menu-panel { background: color-mix(in srgb, var(--surface-solid) 80%, transparent); }
 }
 .bottombar strong { color: var(--text); font-weight: 650; }
 .bar-stats { display: flex; gap: 22px; }
@@ -362,10 +375,16 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   border-radius: 50%; background: var(--surface-solid); color: var(--text); stroke-width: 2.6;
 }
 .romm-link:hover { color: var(--romm); }
-/* a backdrop-filter inside the bar's own backdrop-filter does not blur, so the panel needs an opaque fill there */
-.bottombar .menu-panel { background: var(--surface-solid); }
 .bottombar.action { padding-top: 8px; padding-bottom: 8px; }
-.bottombar.action .romm-link img { width: 22px; height: 22px; }
+.bottombar.action .romm-link, #bar-menu .menu-toggle {
+  box-sizing: border-box; width: 34px; height: 34px; justify-content: center; padding: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px transparent; transition: box-shadow 0.2s ease;
+}
+.bottombar.action .romm-link:hover, #bar-menu .menu-toggle:hover, #bar-menu .menu-toggle[aria-expanded="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 28%, transparent);
+}
+/* the RomM logo is a filled disc and the mark is open pixels, so the mark runs larger to look the same size */
+.bottombar.action .romm-link img { width: 19px; height: 19px; }
+#bar-menu .bar-mark { width: 26px; height: 26px; }
 
 /* desktop: a second card under the hero that sticks to the top edge as the page scrolls past it */
 @media (min-width: 641px) {
@@ -378,10 +397,11 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
     will-change: transform;  /* Safari does not repaint content inserted into a sticky backdrop-filter box (the stats) until its style changes */
   }
   .bottombar.action { border-radius: 16px; box-shadow: var(--shadow-raised); }
-  .bottombar.action .romm-link img { width: 28px; height: 28px; }
+  .bottombar.action .romm-link img { width: 24px; height: 24px; }
+  #bar-menu .bar-mark { width: 32px; height: 32px; }
+  .bottombar.action .romm-link, #bar-menu .menu-toggle { width: 42px; height: 42px; }
 }
 .bottombar.action .bar-issues, .bottombar.action .bar-last { animation: bar-item-in 0.35s 0.08s both; }
-/* no transform here: it would make #bar-menu the containing block of the mobile bottom sheet */
 .bottombar.action #bar-menu { animation: bar-fade-in 0.35s 0.08s both; }
 @keyframes bar-item-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
 @keyframes bar-fade-in { from { opacity: 0; } }
@@ -407,7 +427,29 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 /* --- per-game issues modal --- */
 .modal.wide { width: min(1180px, 100%); min-height: min(640px, 92vh); }
 .issues { display: grid; gap: 12px; margin-bottom: 22px; }
-.issue { border: 1px solid var(--hairline); border-radius: 18px; padding: 14px; display: grid; gap: 12px; }
+.issue {
+  border: 1px solid var(--hairline-strong); border-radius: 20px; padding: 16px; display: grid; gap: 12px;
+  background: color-mix(in srgb, var(--text) 2.5%, var(--surface-solid)); box-shadow: var(--shadow-card);
+}
+.status-row {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 16px;
+  background: var(--chip-bg); font-size: 13.5px; min-width: 0;
+}
+.status-row .shot { height: 52px; width: auto; max-width: 96px; object-fit: cover; border-radius: 8px; background: var(--chip-bg); }
+.status-sep { align-self: stretch; width: 1px; background: var(--hairline-strong); }
+.status-when { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.status-when > div { display: grid; gap: 1px; font-weight: 600; white-space: nowrap; }
+.status-sync { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.glyph { width: 20px; height: 20px; flex-shrink: 0; color: var(--text-dim); }
+.status-pill { padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.status-pill.ok { background: var(--ok-tint); color: var(--ok-deep); }
+.status-pill.crit { background: var(--crit-tint); color: var(--crit-deep); }
+.status-pill.held { background: var(--chip-bg); color: var(--text-dim); }
+.card-foot { display: flex; align-items: start; gap: 12px; }
+.card-foot .pill { margin-left: auto; }
+.file-history { flex: 1; min-width: 0; }
+.file-history summary { cursor: pointer; font-size: 13px; color: var(--text-dim); padding: 2px 4px; }
+.file-history .history { margin-top: 8px; }
 .issue-head { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 650; min-width: 0; }
 .issue-head .fname { overflow-wrap: anywhere; }
 .issue.held .why { justify-self: start; }
@@ -430,9 +472,9 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 .pill:disabled { color: var(--text-faint); cursor: not-allowed; }
 .mono { font-family: var(--font-mono); font-size: 12px; }
 .history { list-style: none; display: grid; gap: 6px; }
-.history li { display: grid; grid-template-columns: 150px 1fr; gap: 14px; padding: 10px 14px; border-radius: 12px; background: var(--chip-bg); font-size: 14px; }
+.history li { display: grid; grid-template-columns: 210px 1fr; gap: 14px; padding: 8px 12px; border-radius: 10px; background: var(--chip-bg); font-size: 13px; }
 .history .when { color: var(--text-dim); }
-.history .detail { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }
+.history .detail { color: var(--text-dim); margin-left: 6px; }
 .game-link { cursor: pointer; }
 .game-link:hover .gname { text-decoration: underline; }
 [hidden] { display: none !important; }
@@ -441,8 +483,7 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
 @media (max-width: 640px) {
   .shell { padding: 8px 16px 110px; }
   .topbar { flex-wrap: wrap; gap: 10px; padding: 14px 0 10px; }
-  .brand-mark { width: 30px; height: 30px; }
-  .brand { font-size: 17px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .brand-mark { width: 36px; height: 36px; }
   .topbar-right { gap: 8px; }
   .hero::before { inset: -40px -30px; }
   .hero-card { padding: 20px; }
@@ -459,7 +500,6 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .bottombar { gap: 12px; padding: 10px 16px; font-size: 12.5px; }
   .bar-stats { flex-wrap: wrap; gap: 2px 12px; flex: 1; min-width: 0; }
   .bottombar.action { flex-wrap: nowrap; gap: 12px; padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
-  .bottombar.action .romm-link { padding: 0 4px; }
   .bottombar.action .bar-last { margin-right: auto; color: var(--text-dim); }
   .bottombar.action .romm-link { margin-left: 0; }
 
@@ -469,14 +509,13 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
     border-radius: 20px 20px 0 0; transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease, visibility 0.28s;
   }
   .menu-close {
-    display: grid; place-items: center; position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
-    padding: 0; border: 0; border-radius: 50%; background: var(--chip-bg); color: var(--text-dim); font-size: 18px; line-height: 1;
+    display: grid; place-items: center; position: absolute; top: 10px; right: 10px; width: 24px; height: 24px;
+    padding: 0; border: 0; border-radius: 50%; background: var(--chip-bg); color: var(--text-dim);
   }
-  .menu-panel { overscroll-behavior: contain; }
+  .menu-panel { padding-top: 42px; overscroll-behavior: contain; }
   body.menu-open { overflow: hidden; }  /* page must not scroll under the open sheet */
+  body.menu-open::before { content: ""; position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.45); touch-action: none; overscroll-behavior: none; }
   .menu-panel[hidden] { display: block !important; visibility: hidden; opacity: 0; transform: translateY(32px); }
-  .bottombar .menu { position: static; }
-  .bottombar .menu-panel { position: absolute; bottom: 100%; }
   .scrim { padding: 10px; }
   .modal { padding: 18px 16px; border-radius: 18px; }
   .modal.wide { min-height: 0; }
@@ -484,4 +523,9 @@ details.sub > summary { font-weight: 550; font-size: 14px; padding: 7px 10px; }
   .modal-head .cover { width: 56px; }
   .modal-head h3 { font-size: 20px; }
   .history li { grid-template-columns: 1fr; gap: 4px; }
+  .history .detail { display: block; margin-left: 0; }
+  .issue { padding: 12px; }
+  .status-row { gap: 8px; padding: 8px 10px; }
+  .status-row .shot { height: 40px; max-width: 56px; }
+  .status-sync .glyph { display: none; }
 }

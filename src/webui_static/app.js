@@ -3,9 +3,11 @@ let state;
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const asset = (path) => `/romm/${path.replace(/^\//, "")}`;
-const icon = (slug) => asset(`assets/platforms/${slug}.svg`);
 const cover = (path) => (path ? asset(path) : "");
-const img = (cls, src, lazy = false) => `<img class="${cls}" src="${src}" alt="" decoding="async" ${lazy ? 'loading="lazy"' : ""} />`;
+const img = (cls, src, lazy = false, fallback = "") =>
+  `<img class="${cls}" src="${src}" alt="" decoding="async" ${lazy ? 'loading="lazy"' : ""} ${fallback ? `onerror="this.onerror=null;this.src='${fallback}'"` : ""} />`;
+// RomM ships a few legacy platforms (e.g. pico) as .ico only
+const platIcon = (slug, lazy = false) => img("plat-icon", asset(`assets/platforms/${slug}.svg`), lazy, asset(`assets/platforms/${slug}.ico`));
 const PUSH_ONLY_REASON = "Push-only: the sync folders are read-only (or PUSH_ONLY is set), so RomM copies are never written to disk.";
 
 function ago(iso) {
@@ -17,6 +19,8 @@ function ago(iso) {
 }
 const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const stamp = (iso) => new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+const shortStamp = (iso) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
 const kb = (b) => (b == null ? "unknown" : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 const SYNC_MODE_NAMES = { watch: "Incremental", periodic: "Periodic" };
 const syncErrors = () => state.last_sync?.errors ?? 0;
@@ -97,7 +101,7 @@ function groupCard(g) {
   const chips = (g.ambiguous ? `<span class="why">Not synced: ${g.ambiguous.roms.length} RomM matches</span>` : "") +
     [[g.conflicts.length, "conflict"], [g.differs.length, "difference"], [g.blocked.length, "held download"], [g.syncthing.length, "Syncthing copy"]]
     .filter(([n]) => n).map(([n, w], i) => `<span class="why ${i || !g.conflicts.length ? "soft" : ""}">${plural(n, w)}</span>`).join("");
-  const sub = g.game ? `${img("plat-icon", icon(g.game.platform_slug))}${esc(g.game.platform_name)}` : `Folder /${esc(g.folder)}`;
+  const sub = g.game ? `${platIcon(g.game.platform_slug)}${esc(g.game.platform_name)}` : `Folder /${esc(g.folder)}`;
   return `<button class="conflict-card ${g.game ? "" : "plain"}" data-group="${esc(g.key)}">
       ${g.game ? img("cover", cover(g.game.cover), true) : ""}
       <div>
@@ -150,7 +154,7 @@ function fillTree(details) {
 
 function platformSummary(p, count) {
   const hit = p.games.some((g) => g.files.some(isOpen));
-  return [hit, `<summary>${img("plat-icon", icon(p.slug), true)}${esc(p.name)}<span class="n">${count}</span><span class="chev">▶</span></summary>`];
+  return [hit, `<summary>${platIcon(p.slug, true)}${esc(p.name)}<span class="n">${count}</span><span class="chev">▶</span></summary>`];
 }
 
 const foldPill = (side) => `<button class="pill fold" data-fold="${side}"><span class="chev">▶</span></button>`;
@@ -233,11 +237,25 @@ function renderBottom() {
 }
 
 // Once the hero card has scrolled away (desktop: the sticky bar reaches the top) the bar becomes the action bar and takes over the maintenance button.
+// Only the button moves: a backdrop-filter inside the sticky/fixed bar cannot blur the page, so the panel stays outside it and is placed beside the button.
 function setActionBar(action) {
   const bar = $("#bottombar");
   if (bar.classList.contains("action") === action) return;
   bar.classList.toggle("action", action);
-  (action ? $("#bar-menu") : $(".topbar-right")).append($(".menu"));
+  if (action) $("#bar-menu").append($("#menu-toggle"));
+  else $(".menu").prepend($("#menu-toggle"));
+  placeMenuPanel();
+}
+function placeMenuPanel() {
+  const panel = $("#menu-panel");
+  const docked = $("#bottombar").classList.contains("action");
+  panel.classList.toggle("docked", docked);
+  panel.removeAttribute("style");
+  if (!docked) return;
+  const button = $("#menu-toggle").getBoundingClientRect();
+  Object.assign(panel.style, sheetLayout.matches
+    ? { bottom: `${innerHeight - $("#bottombar").getBoundingClientRect().top}px` }
+    : { top: `${button.bottom + 10}px`, right: `${document.documentElement.clientWidth - button.right}px` });
 }
 const STICKY_TOP_PX = 12;  // keep in sync with .bottombar { top } in styles.css
 // Land just past the point where the bar sticks, so "Needs you" sits right under it (desktop) without the bar reverting to its resting state,
@@ -261,8 +279,29 @@ function gameHead(game, subtitle) {
   return `<div class="modal-head">
     ${img("cover", cover(game.cover))}
     <div><h3>${esc(game.name)}</h3>
-      <div class="meta">${img("plat-icon", icon(game.platform_slug))}${esc(game.platform_name)}${subtitle}</div></div>
+      <div class="meta">${platIcon(game.platform_slug)}${esc(game.platform_name)}${subtitle}</div></div>
     <button class="pill close">Close</button></div>`;
+}
+
+// Tabler Icons outline glyphs (MIT), inlined so they work offline and take currentColor
+const glyph = (...paths) => `<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths.map((d) => `<path d="${d}" />`).join("")}</svg>`;
+const CLOCK = glyph("M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0", "M12 7v5l3 3");
+const SYNC = glyph("M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4", "M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4");
+const STATUS_PILLS = { synced: ["ok", "In Sync"], conflict: ["crit", "Conflicts"], differs: ["crit", "Conflicts"], blocked: ["held", "Held"] };
+
+function fileHead(file) {
+  return `<div class="issue-head"><span class="kind">${file.kind}${file.core ? ` · ${esc(file.core)}` : ""}</span><span class="fname">${esc(file.file_name)}</span></div>`;
+}
+
+function statusRow(game, file, status = file.status) {
+  const [tone, label] = status === "synced" && !file.last_synced ? ["held", "Not synced"] : STATUS_PILLS[status];
+  const query = new URLSearchParams({ file_name: file.file_name, emulator: file.emulator, v: file.local?.modified_at ?? "" });
+  const shot = file.screenshot ? `${img("shot", `/api/games/${game.rom_id}/screenshot?${query}`, true)}<span class="status-sep"></span>` : "";
+  const when = file.last_synced ? `<span>${shortStamp(file.last_synced)}</span><span class="dim">${ago(file.last_synced)}</span>` : `<span>Never synced</span>`;
+  return `<div class="status-row">${shot}
+      <div class="status-when">${CLOCK}<div>${when}</div></div>
+      <div class="status-sync">${SYNC}<span class="status-pill ${tone}">${label}</span></div>
+    </div>`;
 }
 
 function copyLine(copy, newer) {
@@ -270,12 +309,6 @@ function copyLine(copy, newer) {
     <span class="dim">${esc(copy.device)} · ${kb(copy.size_bytes)}${copy.hash ? ` · <span class="mono">${esc(copy.hash.slice(0, 10))}</span>` : ""}</span>`;
 }
 
-function issueRow(title, tag, left, right) {
-  return `<div class="issue">
-      <div class="issue-head"><span class="kind">${tag}</span><span class="fname">${esc(title)}</span></div>
-      <div class="compare">${left}${right}</div>
-    </div>`;
-}
 
 function issueSide(key, label, body, button) {
   return `<div class="side compact ${key}"><h4>${label}</h4><div class="copy">${body}</div>${button || ""}</div>`;
@@ -288,16 +321,17 @@ function keepButton(key, label, attrs, reason) {
 function conflictIssue(game, file, firstSeen = false) {
   const localNewer = new Date(file.local.modified_at) > new Date(file.romm.modified_at);
   const attrs = `data-rom="${game.rom_id}" data-file="${esc(file.file_name)}" data-emu="${esc(file.emulator)}" data-kind="${file.kind}"`;
-  return issueRow(file.file_name, `${file.kind}${file.core ? ` · ${esc(file.core)}` : ""}`,
-    issueSide("local", "Syncthing", copyLine(file.local, localNewer && !firstSeen), keepButton("local", "Keep Syncthing copy", attrs)),
-    issueSide("romm", "RomM", copyLine(file.romm, !localNewer && !firstSeen), keepButton("romm", "Keep RomM copy", attrs, state.push_only ? PUSH_ONLY_REASON : "")));
+  return `<div class="issue">${fileHead(file)}${statusRow(game, file)}
+      <div class="compare">
+        ${issueSide("local", "Syncthing", copyLine(file.local, localNewer && !firstSeen), keepButton("local", "Keep Syncthing copy", attrs))}
+        ${issueSide("romm", "RomM", copyLine(file.romm, !localNewer && !firstSeen), keepButton("romm", "Keep RomM copy", attrs, state.push_only ? PUSH_ONLY_REASON : ""))}
+      </div></div>`;
 }
 
 function blockedIssue(game, file) {
   const attrs = `data-rom="${game.rom_id}" data-file="${esc(file.file_name)}" data-emu="${esc(file.emulator)}" data-kind="${file.kind}"`;
   const addButton = `<button class="keep" data-add-local ${attrs} ${state.push_only ? `disabled title="${esc(PUSH_ONLY_REASON)}"` : ""}>Add to Local</button>`;
-  return `<div class="issue held">
-      <div class="issue-head"><span class="kind">${file.kind}</span><span class="fname">${esc(file.file_name)}</span></div>
+  return `<div class="issue held">${fileHead(file)}${statusRow(game, file)}
       <div class="why soft">Not downloaded: ${esc(file.note)}</div>
       <div class="compare">
         ${issueSide("local", "Existing file", file.local ? copyLine(file.local, false) : `<span class="dim">none</span>`)}
@@ -311,7 +345,7 @@ const bulkButton = (scope, label) =>
   state.push_only ? "" : `<div class="bulk-slot" data-scope="${esc(scope)}" data-label="${esc(label)}"><button class="pill" data-bulk="ask">${label}</button></div>`;
 
 // One block per original file: its current copy, then every conflict copy Syncthing kept for it, newest first.
-function syncthingFile(copies) {
+function syncthingFile(copies, game) {
   const reason = state.push_only ? PUSH_ONLY_REASON : "";
   const current = { ...copies[0].original, device: "Current file" };
   const rows = [...copies].sort((x, y) => new Date(y.modified_at) - new Date(x.modified_at)).map((c) => `
@@ -322,20 +356,22 @@ function syncthingFile(copies) {
           <button class="pill use" data-keep="romm" data-st="${esc(c.path)}" ${reason ? `disabled title="${esc(reason)}"` : ""}>Use this copy</button>
         </div>
       </div>`).join("");
+  const file = game?.files.find((f) => f.file_name === copies[0].file_name);
   return `<div class="issue">
       <div class="issue-head"><span class="kind">syncthing</span><span class="fname">${esc(copies[0].file_name)}</span></div>
+      ${file ? statusRow(game, file, "conflict") : ""}
       <div class="side compact local"><h4>Current file</h4>
         <div class="st-copy first"><div class="copy">${copyLine(current, false)}</div>${bulkButton(copies[0].file_name, "Keep current copy")}</div></div>
       <div class="side compact romm"><h4>${plural(copies.length, "conflict copy")}</h4>${rows}</div>
     </div>`;
 }
 
-function syncthingSection(copies) {
+function syncthingSection(copies, game) {
   const byFile = new Map();
   for (const c of copies) byFile.set(c.file_name, [...(byFile.get(c.file_name) || []), c]);
   return `<section class="issue-section">
     <div class="sub-head with-action"><span>Syncthing Conflicts</span>${byFile.size > 1 ? bulkButton("", "Keep All Current Copies") : ""}</div>
-    <div class="issues">${[...byFile.values()].map(syncthingFile).join("")}</div></section>`;
+    <div class="issues">${[...byFile.values()].map((c) => syncthingFile(c, game)).join("")}</div></section>`;
 }
 
 function bulkConfirm(copies) {
@@ -358,7 +394,7 @@ function openGroup(key) {
   modal(head + ambiguous +
     section("Changed on both sides", g.conflicts.map((f) => conflictIssue(g.game, f))) +
     section("Differs, no sync history (a one-time pick, then they sync normally)", g.differs.map((f) => conflictIssue(g.game, f, true))) +
-    (g.syncthing.length ? syncthingSection(g.syncthing) : "") +
+    (g.syncthing.length ? syncthingSection(g.syncthing, g.game) : "") +
     section("Held RomM downloads", g.blocked.map((f) => blockedIssue(g.game, f))), "wide");
   $(".scrim").onclick = (e) => {
     if (e.target.classList.contains("scrim") || e.target.classList.contains("close")) return closeModal();
@@ -403,12 +439,22 @@ const ACTIONS = {
 async function openHistory(romId) {
   const game = state.games.find((g) => g.rom_id === romId);
   const events = await (await fetch(`/api/games/${romId}/history`)).json();
-  modal(`${gameHead(game, "")}
-    ${events.length ? `<ul class="history">${events.map((e) => `<li><span class="when">${stamp(e.ts)}<br />${ago(e.ts)}</span>
-      <span>${e.success ? ACTIONS[e.action] : `Failed ${e.action.replace("_", " ")}:`} <strong>${esc(e.file_name)}</strong>
-        <div class="detail">${e.success ? `${e.device ? esc(e.device) : ""}${e.backup_path ? ` · previous copy backed up` : ""}` : esc(e.error)}</div></span></li>`).join("")}</ul>`
-      : `<div class="empty-ok">No sync history for this game yet.</div>`}`);
-  $(".scrim").onclick = (e) => (e.target.classList.contains("scrim") || e.target.classList.contains("close")) && closeModal();
+  const eventRow = (e) => `<li><span class="when">${stamp(e.ts)} · ${ago(e.ts)}</span>
+      <span>${e.success ? ACTIONS[e.action] : `Failed ${e.action.replace("_", " ")}`}
+        <span class="detail">${e.success ? `${e.device ? esc(e.device) : ""}${e.backup_path ? ` · previous copy backed up` : ""}` : esc(e.error)}</span></span></li>`;
+  const card = (file) => {
+    const own = events.filter((e) => e.kind === file.kind && e.file_name === file.file_name && e.emulator === file.emulator);
+    const open = isOpen(file) ? `<button class="pill" data-group="${game.rom_id}">Resolve</button>` : "";
+    return `<div class="issue">${fileHead(file)}${statusRow(game, file)}
+      ${own.length || open ? `<div class="card-foot">${own.length ? `<details class="file-history"><summary>${plural(own.length, "sync event")}</summary>
+        <ul class="history">${own.map(eventRow).join("")}</ul></details>` : ""}${open}</div>` : ""}</div>`;
+  };
+  modal(`${gameHead(game, "")}<div class="issues">${game.files.map(card).join("")}</div>`);
+  $(".scrim").onclick = (e) => {
+    if (e.target.classList.contains("scrim") || e.target.classList.contains("close")) return closeModal();
+    const group = e.target.closest("[data-group]");
+    if (group) openGroup(group.dataset.group);
+  };
 }
 
 // `choices` replaces the default No/Yes buttons: { label, cls, run, reason }, where a reason disables the button.
@@ -485,7 +531,7 @@ function renderMenu() {
   const info = state.server_info;
   const configRows = Object.entries(info.config).map(([name, value]) => stat(`<span class="mono">${name}</span>`, esc(configValue(name, value)))).join("");
   $("#menu-panel").innerHTML = `
-    <button class="menu-close" data-action="close" aria-label="Close">×</button>
+    <button class="menu-close" data-action="close" aria-label="Close"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
     <div class="menu-label">Server info</div>
     ${stat("RomM_Syncthing_Sync Version", esc(info.sync_version))}
     <div id="romm-row">${rommRow()}</div>
@@ -526,7 +572,10 @@ function setMenuOpen(open) {
   $("#menu-panel").hidden = !open;
   $("#menu-toggle").setAttribute("aria-expanded", String(open));
   document.body.classList.toggle("menu-open", open);
-  if (open) checkRomm();
+  if (open) {
+    placeMenuPanel();
+    checkRomm();
+  }
 }
 $("#menu-toggle").addEventListener("click", () => setMenuOpen($("#menu-panel").hidden));
 $("#menu-panel").addEventListener("toggle", (e) => (configOpen = e.target.open), true);
@@ -545,8 +594,15 @@ $("#menu-panel").addEventListener("click", (e) => {
     runAction(button, button.dataset.action);
   }
 });
+const sheetLayout = matchMedia("(max-width: 640px)");
+for (const type of ["touchmove", "wheel"]) {
+  document.addEventListener(type, (e) => {
+    if (sheetLayout.matches && document.body.classList.contains("menu-open") && !e.target.closest("#menu-panel")) e.preventDefault();
+  }, { passive: false });
+}
 document.addEventListener("click", (e) => {
-  if (!e.composedPath().includes($(".menu"))) setMenuOpen(false);  // the clicked button may already be replaced
+  const path = e.composedPath();  // the clicked button may already be replaced
+  if (!path.includes($(".menu")) && !path.includes($("#menu-toggle"))) setMenuOpen(false);
 });
 
 function render() {
@@ -599,6 +655,22 @@ document.addEventListener("click", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => e.key === "Escape" && closeModal());
+
+const mark = $(".brand-mark");
+// docked in the action bar, the maintenance button shows the mark in place of its tools icon
+const barMark = mark.cloneNode(true);
+barMark.setAttribute("class", "bar-mark");
+barMark.setAttribute("aria-hidden", "true");
+barMark.removeAttribute("role");
+barMark.querySelector("title").remove();  // it would replace the button's "Maintenance" tooltip
+$("#menu-toggle").append(barMark);
+// a touch enters on press and leaves on release, so these cover both hover and touch-and-hold
+for (const el of [mark, $("#menu-toggle")]) {
+  for (const [type, spinning] of [["pointerenter", true], ["pointerleave", false], ["pointercancel", false]]) {
+    el.addEventListener(type, () => el.classList.toggle("spinning", spinning));
+  }
+}
+mark.addEventListener("contextmenu", (e) => e.preventDefault());  // Android long-press menu
 
 const themeBtn = $("#theme-toggle");
 themeBtn.addEventListener("click", () => {
