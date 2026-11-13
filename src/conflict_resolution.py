@@ -7,6 +7,7 @@ from pathlib import Path
 from loguru import logger
 
 from .games_class import Game, SaveFile, SaveState
+from .library_classes import LibraryScanner
 from .two_way_sync import TwoWaySync, file_md5, iso, local_copy, romm_fields
 
 
@@ -91,10 +92,13 @@ class ConflictResolution:
         logger.info(f"Added {file_name} to the sync folder as {path.relative_to(self.sync.cfg.sync_dir_for(kind))}")
 
     def resolve_syncthing_conflict(self, conflict_path: Path, original_path: Path, keep: str) -> None:
-        """keep "original" or "conflict" copy; the other one moves to the backup folder."""
+        """keep "original" or "conflict" copy; the other one moves to the backup folder. A state's screenshot copy follows the same choice."""
+        if screenshot := LibraryScanner.screenshot_conflict(conflict_path, original_path):
+            self.resolve_syncthing_conflict(screenshot, Path(f"{original_path}.png"), keep)
         if keep == "original":
             self._backup(0, conflict_path.name, conflict_path.read_bytes())
             conflict_path.unlink()
         else:
-            self._backup(0, original_path.name, original_path.read_bytes())
+            if original_path.exists():  # only a screenshot can be missing: the local state may never have had one
+                self._backup(0, original_path.name, original_path.read_bytes())
             os.replace(conflict_path, original_path)

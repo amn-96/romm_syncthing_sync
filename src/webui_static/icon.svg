@@ -1,20 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <mask id="pad-cut">
-      <rect width="64" height="64" fill="#fff"/>
-      <path d="M16.5 25.5h5v-5h4v5h5v4h-5v5h-4v-5h-5z" fill="#000"/>
-      <circle cx="40.5" cy="24" r="2.8" fill="#000"/>
-      <circle cx="46.5" cy="30" r="2.8" fill="#000"/>
-      <circle cx="49" cy="49" r="15.5" fill="#000"/>
-    </mask>
-  </defs>
-  <path mask="url(#pad-cut)" fill="#7c5ce6"
-        d="M19 12h26a14 14 0 0 1 13.7 11.1l3.5 16.6a7.5 7.5 0 0 1-12.9 6.6L44 40H20l-5.3 6.3A7.5 7.5 0 0 1 1.8 39.7l3.5-16.6A14 14 0 0 1 19 12z"/>
-  <circle cx="49" cy="49" r="13" fill="#3b82f6"/>
-  <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-    <path d="M42 47.5a7.2 7.2 0 0 1 12.6-3.8"/>
-    <path d="M56 50.5a7.2 7.2 0 0 1-12.6 3.8"/>
-  </g>
-  <path d="M56.8 39.8l-.6 5.9-5.7-1.6z" fill="#fff"/>
-  <path d="M41.2 58.2l.6-5.9 5.7 1.6z" fill="#fff"/>
+  <style>
+    .mark-ink { fill: #111117; } .mark-sync { fill: #0284c7; } .mark-romm { fill: #553e98; }
+    @media (prefers-color-scheme: dark) { .mark-ink { fill: #fff; } .mark-sync { fill: #38bdf8; } .mark-romm { fill: #8b74e8; } }
+  </style>
+  <g class="mark-loop"><g class="mark-sync"><rect x="14.2" y="50.5" width="5" height="5"/><rect x="8.5" y="44.8" width="5" height="5"/><rect x="4.8" y="37.5" width="5" height="5"/><rect x="3.5" y="29.5" width="5" height="5"/><rect x="4.8" y="21.5" width="5" height="5"/><rect x="8.5" y="14.2" width="5" height="5"/><rect x="14.2" y="8.5" width="5" height="5"/><rect x="21.5" y="4.8" width="5" height="5"/><path d="M34.5 0.0H37.5V3.0H40.5V6.0H43.5V9.0H40.5V12.0H37.5V15.0H34.5Z"/></g><g class="mark-romm"><rect x="44.8" y="8.5" width="5" height="5"/><rect x="50.5" y="14.2" width="5" height="5"/><rect x="54.2" y="21.5" width="5" height="5"/><rect x="55.5" y="29.5" width="5" height="5"/><rect x="54.2" y="37.5" width="5" height="5"/><rect x="50.5" y="44.8" width="5" height="5"/><rect x="44.8" y="50.5" width="5" height="5"/><rect x="37.5" y="54.2" width="5" height="5"/><path d="M29.5 49.0H26.5V52.0H23.5V55.0H20.5V58.0H23.5V61.0H26.5V64.0H29.5Z"/></g></g>
+    <path class="mark-ink" d="M14.4 19.2h9.6v3.4h-9.6ZM40 19.2h9.6v3.4h-9.6ZM11.2 22.4h41.6v3.4h-41.6ZM11.2 25.6h9.6v3.4h-9.6ZM24 25.6h16v3.4h-16ZM43.2 25.6h9.6v3.4h-9.6ZM11.2 28.8h6.4v3.4h-6.4ZM27.2 28.8h9.6v3.4h-9.6ZM40 28.8h3.2v3.4h-3.2ZM46.4 28.8h6.4v3.4h-6.4ZM11.2 32h9.6v3.4h-9.6ZM24 32h16v3.4h-16ZM43.2 32h9.6v3.4h-9.6ZM11.2 35.2h41.6v3.4h-41.6ZM11.2 38.4h12.8v3.4h-12.8ZM40 38.4h12.8v3.4h-12.8ZM11.2 41.6h9.6v3.4h-9.6ZM43.2 41.6h9.6v3.4h-9.6Z"/>
 </svg>

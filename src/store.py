@@ -97,6 +97,12 @@ class Store:
                            (rom_id, kind, file_name, emulator))
         return rows[0] if rows else None
 
+    def last_synced(self) -> dict[tuple, str]:
+        """Time of each file's newest baseline, keyed by KEY."""
+        rows = self._query(f"SELECT {', '.join(KEY)}, MAX(ts) AS ts FROM sync_events WHERE action IN ({BASELINE_ACTIONS}) AND success=1 "
+                           f"GROUP BY {', '.join(KEY)}")
+        return {tuple(row[c] for c in KEY): row["ts"] for row in rows}
+
     def history(self, rom_id: int) -> list[dict]:
         return self._query("SELECT * FROM sync_events WHERE rom_id=? ORDER BY id DESC", (rom_id,))
 

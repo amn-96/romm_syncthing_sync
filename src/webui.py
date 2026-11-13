@@ -13,7 +13,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel
@@ -22,6 +22,7 @@ from .config import LoggingConfig
 from .library_classes import LibraryScanner
 from .two_way_sync import iso
 from .conflict_resolution import ConflictResolution, LayoutUnavailable
+from .store import KEY
 from .sync_orchestrator import SYNC_LOCK, SYNC_PROGRESS, SyncOrchestrator
 
 STATIC_DIR = Path(__file__).parent / "webui_static"
@@ -37,6 +38,16 @@ class RevalidatingStaticFiles(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+def screenshot_of(state_path: str) -> Path:
+    """RetroArch writes a state's screenshot beside it as `<state>.png`."""
+    return Path(f"{state_path}.png")
+
+
+def listed(file_name: str) -> bool:
+    """A `.png` is a state's screenshot and travels with the state, so the UI never lists one on its own."""
+    return not file_name.lower().endswith(".png")
 
 
 def plural(count: int, word: str) -> str:
@@ -89,13 +100,15 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
 
     def games_from_library() -> list[dict]:
         games: dict[int, dict] = {}
-        for row in store.library():
+        synced_at = store.last_synced()
+        for row in filter(lambda row: listed(row["file_name"]), store.library()):
             game = games.setdefault(row["rom_id"], {"rom_id": row["rom_id"], "name": row["game_name"], "platform_slug": row["platform_slug"],
                                                     "platform_name": row["platform_name"], "fs_folder": row["local_platform"],
                                                     "cover": row["cover_path"], "files": []})
             game["files"].append({
                 "kind": row["kind"], "file_name": row["file_name"], "emulator": row["emulator"], "core": row["emulator"] or None,
-                "status": row["status"], "note": row["note"],
+                "status": row["status"], "note": row["note"], "last_synced": synced_at.get(tuple(row[c] for c in KEY)),
+                "screenshot": row["kind"] == "state" and bool(row["local_path"]) and screenshot_of(row["local_path"]).exists(),
                 "add_local": row["status"] == "blocked" and {
                     layout: reason for layout, (_, reason) in engine.add_local_options(row["kind"], row["local_platform"], row["file_name"], row["emulator"]).items()},
                 "local": row["local_path"] and {"modified_at": row["local_mtime"], "device": row["local_device"] or "Syncthing",
@@ -112,7 +125,7 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
         events = store.events_since(run["started_at"])
 
         def files(action: str) -> list[dict]:
-            return [{"file_name": e["file_name"], "game": game_names.get(e["rom_id"])} for e in events if e["action"] == action]
+            return [{"file_name": e["file_name"], "game": game_names.get(e["rom_id"])} for e in events if e["action"] == action and listed(e["file_name"])]
 
         return {"started_at": run["started_at"], "finished_at": run["finished_at"], "trigger": run["trigger"], "checked": run["checked"],
                 "errors": run["errors"], "pushed": files("push"), "pulled": files("pull")}
@@ -122,7 +135,7 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
         return [{"path": str(conflict), "file_name": original.name, "device": device_names.get(device, device),
                  "modified_at": iso(conflict.stat().st_mtime), "size_bytes": conflict.stat().st_size,
                  "original": {"modified_at": iso(original.stat().st_mtime), "size_bytes": original.stat().st_size}}
-                for conflict, original, device in LibraryScanner.find_syncthing_conflicts(cfg.sync_dirs)]
+                for conflict, original, device in LibraryScanner.find_syncthing_conflicts(cfg.sync_dirs) if listed(original.name)]
 
     filesystem_cache: dict = {}
 
@@ -138,7 +151,7 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
         if not filesystem_cache or time.monotonic() - filesystem_cache["at"] > FILESYSTEM_TTL_SECONDS:
             backups = conflicts.backups()
             filesystem_cache.update(at=time.monotonic(), syncthing_conflicts=syncthing_conflicts(),
-                                    duplicates=LibraryScanner.find_flat_core_duplicates(cfg.sync_dirs),
+                                    duplicates=[d for d in LibraryScanner.find_flat_core_duplicates(cfg.sync_dirs) if listed(d["file_name"])],
                                     backups={"count": len(backups), "size_bytes": sum(path.stat().st_size for path in backups),
                                              "retention_days": cfg.LOG_DB_RETENTION_DAYS})
         return filesystem_cache
@@ -147,10 +160,11 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
     def state(request: Request) -> Response:
         games = games_from_library()
         filesystem = filesystem_state()
+        unmatched = [game | {"files": files} for game in store.kv_get("unmatched") or [] if (files := [f for f in game["files"] if listed(f)])]
         body = json.dumps(jsonable_encoder({"push_only": not engine.writable, "sync_mode": cfg.SYNC_MODE, "romm_url": cfg.ROMM_PUBLIC_URL, "user": romm_user(),
                 "server_info": {"sync_version": SYNC_VERSION, "config": sync_configuration()},
                 "last_sync": last_sync(games), "games": games, "syncthing_conflicts": filesystem["syncthing_conflicts"],
-                "orphans": store.kv_get("orphans") or [], "ambiguous": store.kv_get("ambiguous") or [], "unmatched": store.kv_get("unmatched") or [],
+                "orphans": [o for o in store.kv_get("orphans") or [] if listed(o["file_name"])], "ambiguous": store.kv_get("ambiguous") or [], "unmatched": unmatched,
                 "duplicates": filesystem["duplicates"], "backups": filesystem["backups"],
                 "romm_library": store.kv_get("romm_library") or {"roms": 0, "size_bytes": 0}}), separators=(",", ":")).encode()
         etag = f'"{hashlib.sha1(body).hexdigest()}"'
@@ -195,6 +209,13 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
     @app.get("/api/logs")
     def logs() -> list[str]:
         return list(LoggingConfig.LOG_BUFFER)
+
+    @app.get("/api/games/{rom_id}/screenshot")
+    def screenshot(rom_id: int, file_name: str, emulator: str = "") -> FileResponse:
+        row = store.library_row(rom_id, "state", file_name, emulator)
+        if row is None or not row["local_path"] or not screenshot_of(row["local_path"]).exists():
+            raise HTTPException(404)
+        return FileResponse(screenshot_of(row["local_path"]))
 
     @app.get("/api/games/{rom_id}/history")
     def history(rom_id: int) -> list[dict]:

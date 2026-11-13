@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from collections import defaultdict
 from loguru import logger
+import glob
 import re
+from datetime import datetime
 import yaml
 
 # program imports
@@ -349,9 +351,14 @@ class LibraryScanner:
                 # Skip various metadata files and directories
                 if any(filter_str in file_path.name for filter_str in METADATA_FILE_FILTERS):
                     continue
+                # a .png only belongs to the library as a state's screenshot; any other image would be pushed as a save
+                if file_path.suffix.lower() == ".png" and not LibraryScanner.STATE_SCREEN.match(file_path.name):
+                    continue
                 files.append(file_path)
 
         return files
+
+    STATE_SCREEN = re.compile(r'^(.+?)\.(?:state(?:\d+|\.auto)?|ml\d+)\.png$')
 
     # ROM extensions some cores keep in save names ("Game.gba.sav", "Game.z64.eep"); "Game.gba" must group with "Game.srm"
     ROM_EXTENSIONS = {"gba", "gb", "gbc", "nes", "fds", "sfc", "smc", "n64", "z64", "v64", "nds", "md", "gen", "smd", "sms", "gg",
@@ -374,7 +381,7 @@ class LibraryScanner:
         and anything else is a save (.srm, .sav, ...).
         """
         filename = file_path.name
-        if state_screen_match := re.match(r'^(.+?)\.state(?:\d+|\.auto)?\.png$', filename):
+        if state_screen_match := LibraryScanner.STATE_SCREEN.match(filename):
             return LibraryScanner._game_key(state_screen_match.group(1)), 'state_screen'
         if state_match := re.match(r'^(.+?)\.(?:state(?:\d+|\.auto)?|ml\d+)$', filename):
             return LibraryScanner._game_key(state_match.group(1)), 'state'
@@ -452,7 +459,8 @@ class LibraryScanner:
         return games_dict
     # endregion
 
-    SYNC_CONFLICT_PATTERN = re.compile(r"^(?P<base>.+)\.sync-conflict-\d{8}-\d{6}(?:-(?P<device>[A-Z0-9]{7}))?(?P<ext>\..*)?$")
+    SYNC_CONFLICT_PATTERN = re.compile(r"^(?P<base>.+)\.sync-conflict-(?P<stamp>\d{8}-\d{6})(?:-(?P<device>[A-Z0-9]{7}))?(?P<ext>\..*)?$")
+    SCREENSHOT_PAIR_SECONDS = 60
 
     @staticmethod
     def find_syncthing_conflicts(sync_dirs: List[Path]) -> List[tuple[Path, Path, str | None]]:
@@ -467,6 +475,18 @@ class LibraryScanner:
                 if original_path.is_file():
                     conflicts.append((conflict_path, original_path, match["device"]))
         return conflicts
+
+    @staticmethod
+    def screenshot_conflict(conflict_path: Path, original_path: Path) -> Path | None:
+        """The conflict copy of a state's `<state>.png` that Syncthing made in the same pull: same device, nearest timestamp within a minute."""
+        def stamp(match: re.Match) -> datetime:
+            return datetime.strptime(match["stamp"], "%Y%m%d-%H%M%S")
+
+        state = LibraryScanner.SYNC_CONFLICT_PATTERN.match(conflict_path.name)
+        copies = [(path, abs(stamp(match) - stamp(state)).total_seconds())
+                  for path in original_path.parent.glob(f"{glob.escape(original_path.name)}.sync-conflict-*.png")
+                  if (match := LibraryScanner.SYNC_CONFLICT_PATTERN.match(path.name)) and match["device"] == state["device"]]
+        return min((c for c in copies if c[1] <= LibraryScanner.SCREENSHOT_PAIR_SECONDS), key=lambda c: c[1], default=(None,))[0]
 
     @staticmethod
     def find_flat_core_duplicates(sync_dirs: List[Path]) -> List[dict]:
