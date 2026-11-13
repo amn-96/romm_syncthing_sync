@@ -60,7 +60,7 @@ function renderHero() {
         ${state.push_only ? `<span><strong>Push-only</strong>: nothing is written to the sync folders</span>` : ""}
       </div>
       ${listed.length ? `<details class="hero-toggle">
-        <summary class="pill">${plural(listed.length, "change")}</summary>
+        <summary class="pill">${plural(listed.length, "change")}<span class="chev">▶</span></summary>
         <ul class="hero-files">
           ${listed.map(([f, dir]) => `<li>${esc(f.file_name)}${f.game ? ` <span style="color:var(--text-dim)">${esc(f.game)}</span>` : ""}<span class="dir">${dir}</span></li>`).join("")}
         </ul></details>` : ""}
@@ -228,27 +228,33 @@ function renderBottom() {
   issues.innerHTML = `<span class="${tone(count)}">${plural(count, "Issue")}</span>, <span class="${tone(syncErrors())}">${plural(syncErrors(), "Sync Error")}</span>`;
   $("#bar-last").textContent = ls ? `Last: ${ago(ls.finished_at)}` : "No sync yet";
   $("#bar-stats").innerHTML = `
-    <span><strong>${state.games.length}</strong> games tracked</span>
-    <span><strong>${files.filter((f) => f.kind === "save").length}</strong> saves</span>
-    <span><strong>${files.filter((f) => f.kind === "state").length}</strong> states</span>
-    <span><strong>${byPlatform().length}</strong> platforms</span>`;
+    <span class="stat-line"><span class="s-games"><strong>${state.games.length}</strong> games<span class="wide"> tracked</span></span>
+    <span class="s-plats"><strong>${byPlatform().length}</strong> platforms</span></span>
+    <span class="stat-line"><span class="s-saves"><strong>${files.filter((f) => f.kind === "save").length}</strong> saves</span>
+    <span class="s-states"><strong>${files.filter((f) => f.kind === "state").length}</strong> states</span></span>`;
   $("#bar-romm").href = state.romm_url;
-  $("#bar-romm img").src = asset("assets/isotipo.svg");
+  const rommIcon = $("#bar-romm img");
+  rommIcon.onerror = () => { rommIcon.onerror = null; rommIcon.src = "isotipo.svg"; };  // RomM unreachable: the bundled copy
+  rommIcon.src = asset("assets/isotipo.svg");
 }
 
 // Once the hero card has scrolled away (desktop: the sticky bar reaches the top) the bar becomes the action bar and takes over the maintenance button.
 // Only the button moves: a backdrop-filter inside the sticky/fixed bar cannot blur the page, so the panel stays outside it and is placed beside the button.
+let barHoldsButton = false, lastAction = false;
+const inBar = () => lastAction || sheetLayout.matches;  // a phone's bar always holds both icons
 function setActionBar(action) {
+  lastAction = action;
   const bar = $("#bottombar");
-  if (bar.classList.contains("action") === action) return;
+  if (bar.classList.contains("action") === action && barHoldsButton === inBar()) return;
   bar.classList.toggle("action", action);
-  if (action) $("#bar-menu").append($("#menu-toggle"));
+  barHoldsButton = inBar();
+  if (inBar()) $("#bar-menu").append($("#menu-toggle"));
   else $(".menu").prepend($("#menu-toggle"));
   placeMenuPanel();
 }
 function placeMenuPanel() {
   const panel = $("#menu-panel");
-  const docked = $("#bottombar").classList.contains("action");
+  const docked = $("#bottombar").classList.contains("action") || sheetLayout.matches;
   panel.classList.toggle("docked", docked);
   panel.removeAttribute("style");
   if (!docked) return;
@@ -600,9 +606,14 @@ $("#menu-panel").addEventListener("click", (e) => {
   }
 });
 const sheetLayout = matchMedia("(max-width: 640px)");
+sheetLayout.addEventListener("change", () => setActionBar(lastAction));
 for (const type of ["touchmove", "wheel"]) {
   document.addEventListener(type, (e) => {
-    if (sheetLayout.matches && document.body.classList.contains("menu-open") && !e.target.closest("#menu-panel")) e.preventDefault();
+    if (!sheetLayout.matches) return;
+    const card = e.target.closest?.(".modal");
+    if (card) {  // a card scrolls only when its content overflows; otherwise the swipe would drag the page behind
+      if (card.scrollHeight <= card.clientHeight) e.preventDefault();
+    } else if (($("#modal-root").firstChild || document.body.classList.contains("menu-open")) && !e.target.closest("#menu-panel")) e.preventDefault();
   }, { passive: false });
 }
 document.addEventListener("click", (e) => {
