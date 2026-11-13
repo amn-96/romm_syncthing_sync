@@ -22,26 +22,18 @@
         <path class="mark-ink" d="M14.4 19.2h9.6v3.4h-9.6ZM40 19.2h9.6v3.4h-9.6ZM11.2 22.4h41.6v3.4h-41.6ZM11.2 25.6h9.6v3.4h-9.6ZM24 25.6h16v3.4h-16ZM43.2 25.6h9.6v3.4h-9.6ZM11.2 28.8h6.4v3.4h-6.4ZM27.2 28.8h9.6v3.4h-9.6ZM40 28.8h3.2v3.4h-3.2ZM46.4 28.8h6.4v3.4h-6.4ZM11.2 32h9.6v3.4h-9.6ZM24 32h16v3.4h-16ZM43.2 32h9.6v3.4h-9.6ZM11.2 35.2h41.6v3.4h-41.6ZM11.2 38.4h12.8v3.4h-12.8ZM40 38.4h12.8v3.4h-12.8ZM11.2 41.6h9.6v3.4h-9.6ZM43.2 41.6h9.6v3.4h-9.6Z"/></svg>
       <div class="topbar-right">
         <span class="pill push-only" id="push-only-chip" hidden></span>
-        <button class="pill" id="theme-toggle">Light</button>
-        <div class="menu">
-          <button class="pill menu-toggle" id="menu-toggle" aria-label="Maintenance" title="Maintenance" aria-expanded="false">
-            <!-- Tabler Icons "tools" (MIT) -->
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 21h4l13 -13a1.5 1.5 0 0 0 -4 -4l-13 13v4" /><path d="M14.5 5.5l4 4" /><path d="M12 8l-5 -5l-4 4l5 5" />
-              <path d="M7 8l-1.5 1.5" /><path d="M16 12l5 5l-4 4l-5 -5" /><path d="M16 17l-1.5 1.5" />
-            </svg>
-          </button>
-          <div class="menu-panel" id="menu-panel" hidden></div>
-        </div>
+        <button class="theme-switch" id="theme-toggle" type="button" role="switch" aria-label="Dark mode" aria-checked="true"></button>
       </div>
     </header>
 
-    <section id="hero"></section>
-    <div id="bar-sentinel"></div>
+    <!-- the bar is the page header on desktop; on a phone it is fixed to the bottom -->
     <footer class="bottombar" id="bottombar">
+      <a class="bar-brand" id="bar-brand" href="#" title="romm_syncthing_sync" aria-label="romm_syncthing_sync, back to top"></a>
+      <span class="bar-stats" id="bar-stats"></span>
       <a class="bar-issues" id="bar-issues" href="#needs-you"></a>
       <span class="bar-last" id="bar-last"></span>
-      <span class="bar-stats" id="bar-stats"></span>
+      <span class="pill push-only" id="bar-push-only" hidden></span>
+      <div class="bar-tools">
       <a class="romm-link" id="bar-romm" target="_blank" rel="noopener" title="Open RomM" aria-label="Open RomM">
         <span class="romm-icon"><img src="" alt="" />
         <!-- Tabler Icons "external-link" (MIT) -->
@@ -49,11 +41,18 @@
           <path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" /><path d="M11 13l9 -9" /><path d="M15 4h5v5" />
         </svg></span>
       </a>
-      <div id="bar-menu"></div>
+      <button class="theme-switch bar-theme" id="bar-theme" type="button" role="switch" aria-label="Dark mode" aria-checked="true"></button>
+      <div id="bar-menu">
+        <button class="pill menu-toggle" id="menu-toggle" aria-label="Maintenance" title="Maintenance" aria-expanded="false"></button>
+      </div>
+      </div>
     </footer>
+    <section id="hero"></section>
+    <div id="bar-sentinel"></div>
     <section id="needs-you"></section>
 
     <div class="section-head"><h2>Sync Overview</h2></div>
+    <section id="recent" hidden></section>
     <section class="split">
       <div class="panel" id="panel-local"></div>
       <div class="panel" id="panel-romm"></div>
@@ -70,6 +69,7 @@
     </details>
   </div>
 
+  <div class="menu-panel" id="menu-panel" hidden></div>
   <div id="modal-root"></div>
   <div id="toast" class="toast"></div>
   <script src="app.js"></script>

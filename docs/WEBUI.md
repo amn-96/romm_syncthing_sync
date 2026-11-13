@@ -26,6 +26,7 @@ The toggle in the top right switches between the two themes.
   - *held download*: a file that only exists in RomM and cannot be placed locally.
   - *Syncthing copy*: a `.sync-conflict` copy left by Syncthing.
   - *Not synced: N RomM matches*: the local game name matches several RomM games.
+- **Last Synced.** Under "Sync Overview": the games whose files moved most recently, newest first, as one row of small cards (cover, how long ago, number of saves and states, and a check or an exclamation mark if the game has an open issue). Only real transfers count, so a sync that found nothing to do adds nothing. Click a card to open the game. A phone shows up to three, a wide screen as many as fit.
 - **Stats bar.** Library totals (games tracked, saves, states, platforms) and an icon that opens RomM. It sticks to the top of the window when you scroll past it and becomes the action bar (see below).
 - **Top right.** The theme toggle and the actions menu: prune backups, rebuild the library (a full sync), and pull changes from RomM. In push-only mode the menu notes that nothing is written to the sync folders and the actions that write are disabled.
 
@@ -43,6 +44,17 @@ On a phone the bar sits at the bottom of the screen, within thumb reach. It drop
   <tr>
     <td width="50%"><img src="webgui-images/webgui_mobile-hero.png" alt="Mobile, top of the page with the stats bar" /></td>
     <td width="50%"><img src="webgui-images/webgui_mobile-actionbar.png" alt="Mobile, action bar at the bottom of the screen" /></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <th>Last Synced row</th>
+    <th>A game's card</th>
+  </tr>
+  <tr>
+    <td width="50%"><img src="webgui-images/webgui_mobile-lastsynced.png" alt="Mobile, the Last Synced row above the Syncthing dashboard" /></td>
+    <td width="50%"><img src="webgui-images/webgui_mobile-gamecard.png" alt="Mobile, a game's card with each file's sync status and history" /></td>
   </tr>
 </table>
 

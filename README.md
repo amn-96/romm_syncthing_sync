@@ -108,7 +108,7 @@ Open `http://<host>:8080`. It shows the last sync, files that changed on both si
   </tr>
 </table>
 
-Below "Needs you", the Syncthing and RomM dashboards list the same games from each side, by platform, with the device that last changed each file. Files with an open issue are highlighted.
+Below "Needs you", a "Last Synced" row shows the games whose files moved most recently. Under it, the Syncthing and RomM dashboards list the same games from each side, by platform, with the device that last changed each file. Files with an open issue are highlighted.
 
 ![Syncthing and RomM dashboards side by side](docs/webgui-images/webgui_bothdashboard-overview.png)
 

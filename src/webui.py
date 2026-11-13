@@ -79,6 +79,9 @@ class SyncthingKeepCurrentRequest(BaseModel):
     paths: list[str]
 
 
+RECENT_GAMES = 24  # the UI shows as many as fit, up to this
+
+
 def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
     app = FastAPI(title="romm_sync")
     app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -163,7 +166,7 @@ def create_app(engine, conflicts: ConflictResolution) -> FastAPI:
         unmatched = [game | {"files": files} for game in store.kv_get("unmatched") or [] if (files := [f for f in game["files"] if listed(f)])]
         body = json.dumps(jsonable_encoder({"push_only": not engine.writable, "sync_mode": cfg.SYNC_MODE, "romm_url": cfg.ROMM_PUBLIC_URL, "user": romm_user(),
                 "server_info": {"sync_version": SYNC_VERSION, "config": sync_configuration()},
-                "last_sync": last_sync(games), "games": games, "syncthing_conflicts": filesystem["syncthing_conflicts"],
+                "last_sync": last_sync(games), "recent": store.recent_moves(RECENT_GAMES), "games": games, "syncthing_conflicts": filesystem["syncthing_conflicts"],
                 "orphans": [o for o in store.kv_get("orphans") or [] if listed(o["file_name"])], "ambiguous": store.kv_get("ambiguous") or [], "unmatched": unmatched,
                 "duplicates": filesystem["duplicates"], "backups": filesystem["backups"],
                 "romm_library": store.kv_get("romm_library") or {"roms": 0, "size_bytes": 0}}), separators=(",", ":")).encode()
