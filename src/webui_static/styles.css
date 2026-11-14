@@ -244,7 +244,7 @@ button { font-family: var(--font-ui); }
 .recent-when { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .recent-when .glyph { width: 15px; height: 15px; color: var(--text-dim); flex-shrink: 0; }
 .recent-files { color: var(--text-dim); font-size: 13px; }
-.recent-card .status-chip { cursor: inherit; width: 34px; height: 34px; padding: 0; margin-left: 0; border-radius: 10px; }
+.recent-card .status-chip { cursor: inherit; width: 34px; height: 34px; padding: 0; margin-left: 0; border-radius: 10px; justify-content: center; }
 
 /* --- split dashboard --- */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
