@@ -1,0 +1,34 @@
+# romm_sync
+
+> Two-way sync of emulator saves and states between Syncthing folders and a RomM server. This JSON API serves the dashboard and is open to scripts and agents. Full schemas: /openapi.json. Interactive docs: /docs. Every route with a one-line summary: GET /api.
+
+Games are identified by `rom_id`, RomM's ID for the ROM. A game can have several tracked files (saves and states).
+
+## Two kinds of problem
+
+They are counted separately; a game can be `synced` and still have Syncthing conflicts.
+
+1. **File status** (per tracked file, worst first):
+   - `conflict`: changed in the sync folder and in RomM since the last sync.
+   - `differs`: both copies exist with different content and no sync history to say which is right.
+   - `blocked`: exists only in RomM and could not be placed locally; `note` says why.
+   - `synced`: nothing to do.
+2. **Syncthing conflict copies**: `*.sync-conflict-*` files Syncthing left when two devices changed the same file. Never synced to RomM.
+
+## Start here
+
+- [GET /api/status](/api/status): last sync, counts of both kinds of problem, and `links` to the route that lists each non-zero count.
+- [GET /api/games](/api/games): one summary per game. Filters: `?status=conflict|differs|blocked|synced`, `?syncthing_conflicts=true`, `?platform=<RomM slug>`, `?q=<name substring>`.
+- [GET /api/games/{rom_id}](/docs#/status/game_api_games__rom_id__get): every file of one game with both copies (time, device, size, md5), and its Syncthing conflict copies.
+- [GET /api/games/{rom_id}/history](/docs#/status/history_api_games__rom_id__history_get): sync events, newest first.
+- [GET /api/syncthing-conflicts](/api/syncthing-conflicts): every Syncthing conflict copy, including files of games the sync does not track.
+
+## Resolving
+
+Every action backs up whatever it replaces or removes. All of them are POST with a JSON body; see /docs for the exact schemas.
+
+- `conflict` or `differs`: POST /api/conflicts/resolve with `keep` set to `local` (sync-folder copy) or `romm`. Compare `modified_at`, `device` and `size_bytes` of the two copies first. The newer time is only a hint, because device clocks drift.
+- `blocked`: POST /api/blocked/add-local to place it, or POST /api/blocked/delete-romm when the sync-folder copy has moved past it.
+- Syncthing conflict copy: POST /api/syncthing-conflicts/resolve with its `path` and `keep` set to `original` or `conflict`.
+
+Recommend a choice to the user before you change anything: these actions change their save files.

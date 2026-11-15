@@ -13,8 +13,9 @@ import requests
 from loguru import logger
 
 from .config import Config
-from .cores import normalize_core
+from .cores import MINUI_TAGS, normalize_core
 from .games_class import Game, SaveFile, SaveState, paired_romm, state_slot
+from .library_classes import LibraryScanner
 from .syncthing import SyncthingResolver
 
 if TYPE_CHECKING:
@@ -46,6 +47,13 @@ def romm_fields(response: dict, uploaded_hash: str) -> dict:
     """Event columns describing the RomM copy right after we uploaded `uploaded_hash`'s bytes (RomM doesn't hash states)."""
     return {"romm_id": response["id"], "romm_hash": uploaded_hash,
             "romm_updated_at": romm_stamp(datetime.fromisoformat(response["updated_at"]))}
+
+
+def local_name(romm: SaveFile | SaveState) -> str:
+    """Name a RomM file gets in the sync folder: MinArch can't read the timestamp Grout (MinUI) adds."""
+    if romm.emulator in MINUI_TAGS:
+        return LibraryScanner.WEBPLAYER_STAMP.sub("", romm.path.stem) + romm.path.suffix
+    return romm.path.name
 
 
 def local_copy(kind: str, path: Path, platform_id: int, emulator: str | None, modified_at: datetime) -> SaveFile | SaveState:
@@ -199,12 +207,14 @@ class TwoWaySync:
 
     def download_target(self, game: Game, kind: str, romm: SaveFile | SaveState) -> tuple[Path | None, str | None]:
         """Where a file that exists only in RomM goes, or None and the reason it can't be placed (no reason: already there). Never an existing path."""
+        if self.echo_of(game, kind, romm):
+            return None, None
         platform_dir = self.cfg.sync_dir_for(kind) / game.platform
-        folder = platform_dir
-        if romm.emulator:
+        folder, file_name = platform_dir, local_name(romm)
+        if romm.emulator and romm.emulator not in MINUI_TAGS:
             if not (folder := self.core_folder(platform_dir, romm.emulator)):
                 return None, f"No {romm.emulator} core folder in {game.platform}"
-        target = folder / romm.path.name
+        target = folder / file_name
         if target.exists():
             if file_md5(target) == self.romm_hash(game.romm_id, kind, romm):
                 return None, None  # the same file is already there, nothing to download
@@ -220,7 +230,23 @@ class TwoWaySync:
             paths["core"] = (self.core_folder(platform_dir, emulator) or platform_dir / emulator) / file_name
         return {layout: (path, f"{path.relative_to(platform_dir)} already exists" if path.exists() else None) for layout, path in paths.items()}
 
+    def echo_of(self, game: Game, kind: str, romm: SaveFile | SaveState) -> SaveFile | SaveState | None:
+        """The local file of this game whose bytes RomM's file already holds under another name: a RomM client
+        (web player, Grout) uploaded a copy of what Syncthing synced, often under a timestamped name."""
+        romm_hash = self.romm_hash(game.romm_id, kind, romm)
+        locals_ = game.local_save_files if kind == "save" else game.local_state_files.values()
+        return next((local for local in locals_ if file_md5(local.path) == romm_hash), None)
+
     def pull_new(self, game: Game, kind: str, romm: SaveFile | SaveState) -> None:
+        if echo := self.echo_of(game, kind, romm):
+            key = {"rom_id": game.romm_id, "kind": kind, "file_name": romm.path.name, "emulator": romm.emulator or ""}
+            last = self.store.last_event(*key.values())
+            if not last or (last["action"], last["romm_hash"]) != ("romm_echo", file_md5(echo.path)):
+                self.store.add_event("romm_echo", local_hash=file_md5(echo.path), local_mtime=echo.modified_at.isoformat(),
+                                     romm_id=romm.id, romm_hash=file_md5(echo.path), romm_updated_at=romm_stamp(romm.modified_at),
+                                     device="RomM", **key)
+                logger.debug(f"{romm.path.name} in RomM is a copy of {echo.path.name}: a RomM client echo, keeping the sync-folder copy")
+            return
         target, _ = self.download_target(game, kind, romm)
         if target is None:
             return

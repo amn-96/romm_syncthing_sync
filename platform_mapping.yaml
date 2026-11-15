@@ -232,3 +232,9 @@ game-and-watch:
 gp2x-wiz:
   - gp2x-wiz
   - wiz
+
+# === CORE FOLDERS (optional) ===
+# Core subfolders not in romm_sync's built-in list are skipped with a log warning. Map them here,
+# folder name exactly as on disk -> core ID sent to RomM. This only adds to the built-in list.
+# cores:
+#   "My Snes9x Fork": snes9x

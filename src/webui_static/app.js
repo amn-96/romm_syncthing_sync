@@ -313,7 +313,8 @@ function gameHead(game, subtitle) {
   return `<div class="modal-head">
     ${img("cover", cover(game.cover))}
     <div><h3>${esc(game.name)}</h3>
-      <div class="meta">${platIcon(game.platform_slug)}${esc(game.platform_name)}${subtitle}</div></div>
+      <div class="meta">${platIcon(game.platform_slug)}${esc(game.platform_name)}${subtitle}</div>
+      <div class="rom-meta"><span>RomM ID <b>${game.rom_id}</b></span>${game.sha1 ? `<span title="${esc(game.sha1)}">SHA-1 <span class="mono">${esc(game.sha1.slice(0, 10))}</span></span>` : ""}</div></div>
     <button class="pill close">Close</button></div>`;
 }
 
@@ -383,12 +384,14 @@ function conflictIssue(game, file, firstSeen = false) {
 
 function blockedIssue(game, file) {
   const attrs = `data-rom="${game.rom_id}" data-file="${esc(file.file_name)}" data-emu="${esc(file.emulator)}" data-kind="${file.kind}"`;
-  const addButton = `<button class="keep" data-add-local ${attrs} ${state.push_only ? `disabled title="${esc(PUSH_ONLY_REASON)}"` : ""}>Add to Local</button>`;
+  const disabled = state.push_only ? `disabled title="${esc(PUSH_ONLY_REASON)}"` : "";
+  const buttons = `<div class="keep-pair"><button class="keep" data-add-local ${attrs} ${disabled}>Add to Local</button>
+    <button class="keep danger" data-delete-romm ${attrs} ${disabled}>Delete from RomM</button></div>`;
   return `<div class="issue held">${fileHead(file)}${statusRow(game, file)}
       <div class="why soft">Not downloaded: ${esc(file.note)}</div>
       <div class="compare">
         ${issueSide("local", "Existing file", file.local ? copyLine(file.local, false) : `<span class="dim">none</span>`)}
-        ${issueSide("romm", `RomM copy · ${esc(file.emulator || "no emulator")}`, copyLine(file.romm, false), addButton)}
+        ${issueSide("romm", `RomM copy · ${esc(file.emulator || "no emulator")}`, copyLine(file.romm, false), buttons)}
       </div></div>`;
 }
 
@@ -466,6 +469,12 @@ function openGroup(key) {
     if (bulk) return;
     const addButton = e.target.closest("[data-add-local]");
     if (addButton && !addButton.disabled) return addLocalDialog(g, addButton.dataset, () => openGroup(key));
+    const deleteButton = e.target.closest("[data-delete-romm]");
+    if (deleteButton && !deleteButton.disabled) {
+      const { rom, kind, file, emu } = deleteButton.dataset;
+      return confirmAction("You are choosing <strong>Delete from RomM</strong>. This removes only RomM's copy; the sync-folder file is untouched. A backup will be made.",
+        () => post("/api/blocked/delete-romm", { rom_id: Number(rom), kind, file_name: file, emulator: emu }, `Deleted ${file} from RomM (backed up)`, () => openGroup(key)));
+    }
     const btn = e.target.closest("[data-keep]");
     if (!btn || btn.disabled) return;
     const keep = btn.dataset.keep;
@@ -492,6 +501,8 @@ const ACTIONS = {
   push: "Pushed to RomM", pull: "Pulled from RomM", conflict: "Conflict detected",
   resolve_local: "Resolved: kept the Syncthing copy", resolve_romm: "Resolved: kept the RomM copy",
   match: "Confirmed identical on both sides",
+  romm_echo: "RomM client copy of a synced file, kept the Syncthing copy",
+  delete_romm: "Deleted from RomM, Syncthing copy kept (backed up)",
 };
 
 async function openHistory(romId) {

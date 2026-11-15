@@ -11,7 +11,7 @@ import yaml
 
 # program imports
 from .games_class import Game
-from .cores import normalize_core
+from .cores import add_user_cores, normalize_core, warn_unknown_folder
 from .romm_api_func import RommUser
 from .config import METADATA_FILE_FILTERS, get_config
 
@@ -49,6 +49,12 @@ class RetroGameServer:
             if not isinstance(data, dict):
                 # safe fallback if invalid yaml
                 raise ValueError(f"Platform mapping must be a dictionary, got {type(data).__name__}.")
+
+            user_cores = data.pop("cores", None) or {}
+            if isinstance(user_cores, dict) and all(isinstance(v, str) for v in [*user_cores, *user_cores.values()]):
+                add_user_cores(user_cores)
+            else:
+                logger.error("'cores' must map core folder names to core IDs (\"Folder Name\": core_id); ignoring it.")
 
             # Validate structure: each value should be a list of strings (safe fallbacks again)
             for romm_slug, local_names in data.items():
@@ -107,6 +113,7 @@ class RetroGameServer:
             'platform_id': int,
             'fs_name': str,
             'fs_size_bytes': int,
+            'sha1_hash': str,
             'platform_display_name': str,
             'path_cover_small': str
         }
@@ -192,7 +199,7 @@ class LocalLibrary:
         # Iterate through platform directories within each sync_folder
         for sync_dir in self.sync_folders:
             for platform_dir in sync_dir.iterdir():
-                if not platform_dir.is_dir():
+                if not platform_dir.is_dir() or platform_dir.name.startswith("."):  # Syncthing's .stversions, .stfolder
                     continue
 
                 platform_name = platform_dir.name
@@ -339,10 +346,13 @@ class LibraryScanner:
 
         Iterates through files in the platform directory and in its core subfolders (e.g. gba/mGBA), and returns a list
         of valid game files, excluding metadata files and directories defined in METADATA_FILE_FILTERS.
-        Other subfolders (emulator-internal dirs like gc/User) are ignored.
+        Other subfolders are skipped with a warning; Syncthing's dot-folders are skipped silently.
         """
         files = []
-        core_dirs = [d for d in platform_dir.iterdir() if d.is_dir() and normalize_core(d.name)]
+        subfolders = [d for d in platform_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        core_dirs = [d for d in subfolders if normalize_core(d.name)]
+        for unknown in set(subfolders) - set(core_dirs):
+            warn_unknown_folder(unknown)
 
         for scan_dir in [platform_dir, *core_dirs]:
             for file_path in scan_dir.iterdir():
@@ -493,7 +503,7 @@ class LibraryScanner:
         """Files that exist both directly in a platform folder and in a core folder of it."""
         duplicates = []
         for sync_dir in sync_dirs:
-            for platform_dir in sorted(d for d in sync_dir.iterdir() if d.is_dir()):
+            for platform_dir in sorted(d for d in sync_dir.iterdir() if d.is_dir() and not d.name.startswith(".")):
                 folders_by_name = defaultdict(set)
                 for file_path in LibraryScanner._collect_games(platform_dir):
                     folders_by_name[file_path.name].add(file_path.parent.name)

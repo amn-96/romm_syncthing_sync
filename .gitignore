@@ -7,3 +7,5 @@ dist
 build
 .env
 .env.test
+.env.test*
+.claude/worktrees/

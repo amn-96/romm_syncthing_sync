@@ -108,6 +108,10 @@ A save or state that exists only in RomM (for example from the web player) is do
 
 A choice is disabled when its destination already exists; nothing is ever overwritten.
 
+**Delete from RomM** is for a held file the sync-folder copy has moved past, for example a save a RomM client (Grout) uploaded before you kept playing on another device. It removes only RomM's copy, after saving it to the backup folder.
+
+A file RomM holds under a different name but with the same bytes as a sync-folder file (a RomM client uploading what Syncthing already synced) is never held: it is logged as a RomM client copy and the sync-folder copy is kept.
+
 ### Syncthing conflict copies
 
 ![Syncthing conflicts](webgui-images/webgui_syncthingconflict-overview.png)
@@ -146,3 +150,21 @@ The actions menu (top right) starts with a read-only **Server info** block (this
 - **Notes under "Needs you".** Games whose history is orphaned (the ROM was removed or re-added in RomM) and files that exist both in a platform folder and a core folder (only the newest copy is synced).
 
 Every action that writes shares one lock with the sync loop, so a click waits for a running sync to finish.
+
+## 6. Status API
+
+For scripts and agents debugging a sync, read-only endpoints answer the same questions as the page in small JSON responses. An agent that knows only the address can find its way: `/llms.txt` explains the API and how to resolve each kind of problem, `GET /api` lists every route, every response carries a `Link` header to `/openapi.json`, and a 404 on an unknown path names all three. Field descriptions are at `http://<host>:8080/docs`.
+
+File status and Syncthing conflict copies are separate: a game can be `synced` and still have `.sync-conflict` copies.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api` | Every route with a one-line summary |
+| `GET /api/status` | App version, sync mode, the last sync (times, files checked, errors), file counts per status, Syncthing conflict count, unmatched and ambiguous game counts, and `links` to the route listing each non-zero count |
+| `GET /api/games` | Every tracked game as `{rom_id, name, platform, status, files, syncthing_conflicts}`, where `status` is the most serious of `conflict`, `differs`, `blocked`, `synced`. Filters: `?status=blocked`, `?syncthing_conflicts=true`, `?platform=gba` (RomM slug), `?q=zelda` (name contains) |
+| `GET /api/games/{rom_id}` | One game: every file with its status, note, and the sync-folder and RomM copies (time, device, size, md5, RomM file ID), its Syncthing conflict copies, plus the ROM's SHA-1 |
+| `GET /api/syncthing-conflicts` | Every Syncthing conflict copy, with its `rom_id` (null for an untracked file) and the current file it conflicts with |
+| `GET /api/games/{rom_id}/history` | That game's sync events, newest first |
+| `GET /api/romm-status` | RomM's version, or the error reaching it |
+
+`rom_id` is RomM's ID for the ROM.
