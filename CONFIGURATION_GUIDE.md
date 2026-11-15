@@ -12,6 +12,7 @@ Detailed setup and reference for RomM-Syncthing-Sync. For how sync decisions and
 - [Sync mode](#sync-mode)
 - [Optional variables](#optional-variables)
 - [Platform mapping](#platform-mapping)
+  - [Extra core folders](#extra-core-folders)
 - [Web UI](#web-ui)
 - [History database](#history-database)
 - [Possible incompatibilities](#possible-incompatibilities)
@@ -40,7 +41,16 @@ Authentication type for RomM. Options are "http" or "api".
 
 Your API token for RomM. This is required when `ROMM_AUTH_TYPE`=api.
 
-You can get a token by clicking on your profile image in your RomM webUI (top right on the refreshed UI) --> "Client API Tokens" --> Create. Even though `romm_syncthing_sync` doesn't actually have any code that can delete your library, I recommend limiting the permissions just to be safe. These are the permissions I use. They don't allow writing to the actual rom library, collections, or users.
+You can get a token by clicking on your profile image in your RomM webUI (top right on the refreshed UI) --> "Client API Tokens" --> Create. `romm_sync` never writes to your ROM library, collections, or users. The only thing it deletes is a single save or state, when you press "Delete from RomM" on a held file in the web UI, and it backs that file up first. Limit the token to what it needs:
+
+| Scope | Used for |
+|---|---|
+| `me.read` | Your username and avatar in the web UI |
+| `roms.read` | Reading the ROM library and cover art |
+| `assets.read`, `assets.write` | Listing, downloading, uploading, and deleting saves and states |
+| `devices.read`, `devices.write` | Registering as a RomM device and asking RomM which saves changed (RomM 5.x device sync) |
+
+The screenshot below is an older token with extra scopes (`platforms.read`, `collections.read`, `me.write`, `roms.user.*`). They're harmless but not needed.
 
 ![Limited API Token Permissions](docs/api_token_permissions.png)
 
@@ -163,6 +173,17 @@ See https://docs.romm.app/latest/Platforms-and-Players/Supported-Platforms/ for 
 
 The mapping is not required, but if it isn't provided (or the file is not found), the app can only match *exactly* to RomM's slug.
 
+### Extra core folders
+Core folders (`gba/mGBA`, `psx/SwanStation`) are recognised from a built-in list of libretro cores. A subfolder that isn't on it is skipped, and the log says `Skipping '<folder>': not a known RetroArch core folder`. To sync one anyway, add a `cores:` section to the same file, mapping the folder name exactly as it appears on disk to the core ID sent to RomM:
+
+```yaml
+cores:
+  "My Snes9x Fork": snes9x
+  "Some New Core": some_new_core
+```
+
+These add to the built-in list and can't remove from it. Use an EmulatorJS core ID if you want RomM's web player to load the states; any other ID still syncs. Files without a `cores:` section work as before.
+
 A tip that really helped me is that RomM allows you to map your *local* directory names to *their supported platform names* ("slugs") to make library management easier. [See the docs here.](https://docs.romm.app/latest/Getting-Started/Configuration-File/?h=platform+name#custom-folder-names)
 
 ## Web UI
@@ -178,7 +199,7 @@ Open `http://<host>:8080` (`WEBUI_PORT`). It shows the last sync, files that cha
 The app keeps a SQLite database in `/data` (keep that volume, or history and change tracking reset when the container is recreated). It records every push, pull, conflict, resolution and failed transfer, which is what lets the app tell "changed here", "changed on RomM" and "changed on both" apart without trusting clocks. Old history is pruned after `LOG_DB_RETENTION_DAYS`. See [docs/SYNC_DB.md](docs/SYNC_DB.md) for the tables and details.
 
 ## Possible incompatibilities
-- Core folder names are matched against the cores RomM's in-browser player (EmulatorJS) supports, plus gpSP. A folder that isn't a recognised core (like `User`) is not treated as one.
+- Core folder names are matched against a built-in list of libretro cores: the ones RomM's in-browser player (EmulatorJS) supports, plus common others such as SwanStation, DuckStation, Mesen and Beetle PSX. A folder that isn't on it (like `User`) is skipped with a warning; see [Extra core folders](#extra-core-folders).
 - If the same game has a save or state in more than one place (say flat and in a core folder, or under two different cores), only the most recently modified copy is synced to RomM.
 - melonDS (standalone) states (`.ml1`, `.ml2`, ...) are supported alongside RetroArch's `.state` files for sync purposes, but may not work in RomM's browser emulation since that is made for libretro.
 - The game files (ROM, with one M) on your device are assumed to be *already* the same files as the ROMs in your RomM library. Set up your RomM library before trying to run this app.

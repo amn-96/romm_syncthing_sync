@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from .games_class import Game, SaveFile, SaveState, local_for, paired_romm
-from .two_way_sync import file_md5, iso
+from .two_way_sync import file_md5, iso, local_name
 
 if TYPE_CHECKING:
     from .two_way_sync import TwoWaySync
@@ -77,6 +77,9 @@ class Store:
     def library_row(self, rom_id: int, kind: str, file_name: str, emulator: str) -> dict | None:
         rows = self._query("SELECT * FROM library WHERE rom_id=? AND kind=? AND file_name=? AND emulator=?", (rom_id, kind, file_name, emulator))
         return rows[0] if rows else None
+
+    def delete_library_row(self, row: dict) -> None:
+        self._write("DELETE FROM library WHERE rom_id=? AND kind=? AND file_name=? AND emulator=?", tuple(row[c] for c in KEY))
 
     def update_library_row(self, row: dict) -> None:
         self._write(UPSERT_LIBRARY_ROW, tuple(row[c] for c in LIBRARY_COLUMNS))
@@ -163,6 +166,8 @@ class Store:
         self.kv_set("orphans", self.orphan_events(set(romm_games)))
         for key, listed in (("ambiguous", ambiguous_games), ("unmatched", unmatched_games)):
             self.kv_set(key, listed(games, self.kv_get(key) if partial else None))
+        self.kv_set("rom_sha1", ((self.kv_get("rom_sha1") if partial else None) or {}) | {
+            str(game.romm_id): romm_games[game.romm_id].get("sha1_hash") for game in matched_games})
         self.kv_set("romm_library", {"roms": len(romm_library), "size_bytes": sum(game["fs_size_bytes"] for game in romm_library)})
 
 
@@ -217,7 +222,7 @@ def build_row(sync: "TwoWaySync", game: Game, romm_game: dict, kind: str, local:
         target, row["note"] = sync.download_target(game, kind, romm)
         if target is None and row["note"]:
             row["status"] = "blocked"
-            blocking_path = sync.cfg.sync_dir_for(kind) / game.platform / ref.path.name
+            blocking_path = sync.cfg.sync_dir_for(kind) / game.platform / local_name(romm)
             if blocking_path.exists():
                 stat = blocking_path.stat()
                 row |= {"local_path": str(blocking_path), "local_hash": file_md5(blocking_path), "local_mtime": iso(stat.st_mtime),

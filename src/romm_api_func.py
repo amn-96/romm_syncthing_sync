@@ -244,6 +244,11 @@ class RommUser:
         response.raise_for_status()
         return response.content
 
+    def delete_content(self, kind: str, file_id: int) -> None:
+        """Delete one RomM save or state. kind is "saves" or "states"."""
+        response = requests.post(f"{self.url}/api/{kind}/delete", json={kind: [file_id]}, **self._auth_kwargs())
+        response.raise_for_status()
+
     def negotiate_saves(self, saves: list[dict]) -> dict:
         """Register this app as a RomM device (idempotent) and ask RomM how each client save compares to the server's."""
         device = requests.post(f"{self.url}/api/devices", json={"name": "romm_sync", "client": "romm_sync", "allow_existing": True},

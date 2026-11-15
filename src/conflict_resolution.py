@@ -91,6 +91,17 @@ class ConflictResolution:
                                                   "local_mtime": iso(stat.st_mtime), "local_size": stat.st_size})
         logger.info(f"Added {file_name} to the sync folder as {path.relative_to(self.sync.cfg.sync_dir_for(kind))}")
 
+    def delete_from_romm(self, row: dict) -> None:
+        """Delete a held RomM file that the sync-folder copy supersedes. Its bytes go to the backup folder first."""
+        kind, file_name = row["kind"], row["file_name"]
+        backup_path = self._backup(row["rom_id"], file_name, self.sync.user.download_content(f"{kind}s", row["romm_file_id"]))
+        self.sync.user.delete_content(f"{kind}s", row["romm_file_id"])
+        self.sync.store.add_event("delete_romm", rom_id=row["rom_id"], kind=kind, file_name=file_name, emulator=row["emulator"],
+                                  romm_id=row["romm_file_id"], romm_hash=row["romm_hash"], romm_updated_at=row["romm_updated_at"],
+                                  device="web UI", backup_path=str(backup_path))
+        self.sync.store.delete_library_row(row)
+        logger.info(f"Deleted {file_name} from RomM (backup: {backup_path.name})")
+
     def resolve_syncthing_conflict(self, conflict_path: Path, original_path: Path, keep: str) -> None:
         """keep "original" or "conflict" copy; the other one moves to the backup folder. A state's screenshot copy follows the same choice."""
         if screenshot := LibraryScanner.screenshot_conflict(conflict_path, original_path):
